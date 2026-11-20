@@ -1,7 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
-import { ACCOUNT_KEY, APPOINTMENTS_KEY, firstWord, type Appointment } from '../app/lib/account.ts'
+import { ACCOUNT_KEY, APPOINTMENTS_KEY, STORAGE_PREFIX, firstWord, type Appointment } from '../app/lib/account.ts'
+import { NUMBERING_KEY } from '../app/components/tooth-explorer/tooth-explorer.ts'
 import { includePartials, withBase } from '../build/partials.ts'
 import { peso } from '../app/lib/format.ts'
 import { BRACES, COMMON_SERVICES, SERVICES, durationLabel } from '../app/lib/services.ts'
@@ -337,7 +338,11 @@ test('the legal pages read like a Philippine clinic’s and match what the site 
   assert.ok(privacy.includes('Data Privacy Act of 2012') && privacy.includes('10173'), 'Data Privacy Act')
   assert.ok(privacy.includes('National Privacy Commission'), 'NPC')
   const cookies = mainOf(source.cookies)
-  for (const key of [ACCOUNT_KEY, APPOINTMENTS_KEY]) assert.ok(cookies.includes(key), `cookie policy lists ${key}`)
+  for (const key of [ACCOUNT_KEY, APPOINTMENTS_KEY, NUMBERING_KEY]) {
+    assert.ok(cookies.includes(key), `cookie policy lists ${key}`)
+    assert.ok(key.startsWith(STORAGE_PREFIX), `${key}: Remove everything saved here clears it`)
+  }
+  assert.match(privacy, /tooth numbering/i, 'the privacy notice names the numbering choice')
   // Every field of a stored appointment is named in plain words on both pages, the HMO provider included.
   const stored: Record<keyof Appointment, RegExp | null> = {
     id: null,

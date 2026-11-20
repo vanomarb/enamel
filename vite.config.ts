@@ -102,6 +102,8 @@ export default defineConfig(({ mode }) => {
     outDir: '../dist',
     emptyOutDir: true,
     target: 'es2022',
+    // The 3D tooth model's chunk carries three.js and the generated anatomy (about 600 kB, 155 kB gzipped), loaded only near the chart.
+    chunkSizeWarningLimit: 700,
     rolldownOptions: {
       input: {
         main: page('./app/index.html'),

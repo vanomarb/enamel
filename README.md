@@ -4,10 +4,10 @@ Enamel is a family dental clinic in Guadalupe, Cebu City, with every starting pr
 clinic, the dentists and the bookings are made up, and nothing on the site is sent anywhere. The site shows how a small
 clinic could put its prices, its HMO paperwork and its booking on a few calm pages.
 
-![The tooth chart on a desktop, with the upper right first molar chosen and its usual treatments listed.](docs/screenshots/desktop.png)
+![The 3D tooth chart on a desktop: the lower left first molar lifted out of the gum to show its roots, beside its usual treatments and starting prices.](docs/screenshots/desktop.png)
 
 <p>
-  <img src="docs/screenshots/phone-teeth.png" width="150" alt="The tooth chart on a phone, with a tooth chosen.">
+  <img src="docs/screenshots/phone-teeth.png" width="150" alt="The 3D tooth chart on a phone: the lower teeth seen from the front, with their roots showing through the gum.">
   <img src="docs/screenshots/phone-booking.png" width="150" alt="A booking confirmed on a phone, with the six-month reminder preview.">
 </p>
 
@@ -30,9 +30,14 @@ clinic could put its prices, its HMO paperwork and its booking on a few calm pag
 
 - Read the price list: 16 treatments in six groups, each with a starting price, how long it takes, how many visits,
   what's included and how HMO plans usually treat it. Filter by group and open any row.
-- Pick a tooth on a chart of all 32 adult teeth. The chart faces you the way a dentist sees it, works with a mouse, a
-  finger or the arrow keys, and lists the usual treatments for that tooth with their prices. On a phone it shows one
-  arch at a time, with a plain list of teeth as an alternative.
+- Pick a tooth on a 3D model of all 32 adult teeth, seen from the front with the roots showing through the gum. Drag to
+  turn it all the way round and pinch, Ctrl or ⌘ and scroll, or use the buttons to zoom. Tap or click a tooth to see
+  its usual treatments with their prices, and a close-up: the tooth lifts out of its socket and you can look inside at
+  the dentin, the pulp and each canal, or name its cusps, grooves, ridges and root tips. Short notes say how many roots
+  and canals it usually has and when it comes in. Numbers show in FDI, Universal or Palmer. The model faces you the
+  way a dentist sees it, so your right side is on the left, and it loads only when you scroll near it. It works with
+  a mouse, a finger or the keyboard; where 3D can't run (or without JavaScript), the flat chart of the same teeth takes
+  its place, and on a phone there's a plain list of teeth as an alternative.
 - Press "Book this" on any treatment to open the booking with it already chosen (`/enamel/book/?service=filling`).
 - Book in four steps (five for braces): treatment, day, time, then the patient's name and an optional HMO. General
   treatments are booked with "any general dentist": a time is free when either chair is, and confirming gives it to the
@@ -66,6 +71,7 @@ and built by Van Omar Benaires; the site doesn't name him, because it is present
 ## License
 
 The code is released under the [MIT License](LICENSE). The fonts, Newsreader and Atkinson Hyperlegible Next, keep their
-SIL Open Font License 1.1; see [REFERENCES.md](REFERENCES.md).
+SIL Open Font License 1.1, and three.js, which draws the 3D tooth model, keeps its MIT License; see
+[REFERENCES.md](REFERENCES.md).
 
 Running it locally? See [DEVELOPMENT.md](DEVELOPMENT.md).

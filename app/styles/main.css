@@ -444,6 +444,21 @@
     }
   }
 
+  /* The 3D model's colours. tooth-materials.ts reads them at runtime, so the model follows the tokens. Blue-grey enamel
+     under a darker grid, a pale warm gum turning to bone below, and the inside layers: ivory dentin, a red pulp and
+     canals. A hovered tooth's grid warms toward apricot; the chosen tooth takes on apricot. */
+  [data-tooth-explorer] {
+    --model-enamel: oklch(0.86 0.024 250);
+    --model-grid: oklch(0.52 0.045 253);
+    --model-gum: oklch(0.93 0.026 76);
+    --model-bone: oklch(0.905 0.03 74);
+    --model-chosen: var(--color-apricot);
+    --model-hover: oklch(0.66 0.13 52);
+    --model-dentin: oklch(0.89 0.06 86);
+    --model-pulp: oklch(0.66 0.15 24);
+    --model-canal: oklch(0.58 0.17 22);
+  }
+
   /* A chosen tooth also gets a heavier outline, so the state never rests on colour alone. */
   .tooth > rect:not(.tooth-ring) {
     fill: var(--color-surface);

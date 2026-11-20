@@ -61,7 +61,8 @@ test('scrolling turns smooth in the guarded stylesheet only, never from a script
   // The one smooth scroll is CSS, and the first test above proves it sits inside the reduced-motion guard.
   assert.match(read('styles/main.css'), /scroll-behavior:\s*smooth/, 'the stylesheet is where smooth scrolling lives')
   assert.ok(scripts.length >= 8, 'finds the feature scripts')
-  for (const file of scripts) assert.doesNotMatch(read(file), /smooth/, file)
+  // A smooth scroll from script reads behavior: 'smooth'; GLSL's smoothstep() in a shader is not one.
+  for (const file of scripts) assert.doesNotMatch(read(file), /behavior\s*:\s*['"]smooth['"]|scroll-behavior/, file)
 })
 
 test("the reveals hold nothing back before <html class=\"js\">, and never the page's first section", () => {

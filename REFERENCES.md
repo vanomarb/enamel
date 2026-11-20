@@ -18,3 +18,11 @@ The full licence texts ship with the packages in `node_modules/@fontsource-varia
 | Phosphor Icons | The interface icons, inlined as SVG at build time | MIT. Copyright 2023 Phosphor Icons | [github.com/phosphor-icons/core](https://github.com/phosphor-icons/core) (`@phosphor-icons/core`) |
 
 The MIT notice ships with the package in `node_modules/@phosphor-icons/core/LICENSE`.
+
+## Code
+
+| Library | Use | Licence | Source |
+|---|---|---|---|
+| three.js | Draws the 3D tooth model; the teeth, gums and inside layers are generated in code, with no model files | MIT. Copyright 2010-2026 three.js authors | [threejs.org](https://threejs.org) (`three`) |
+
+The MIT notice ships with the package in `node_modules/three/LICENSE`.

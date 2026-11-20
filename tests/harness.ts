@@ -29,6 +29,8 @@ export interface Page {
   document: Document
   /** Runs boot() on this page and returns any start-up errors it logged. */
   boot(): string[]
+  /** Runs fn with the browser globals pointed at this page, as boot() does: for starting one feature by hand. */
+  run<T>(fn: () => T): T
   $<T extends Element = HTMLElement>(selector: string): T
   $$<T extends Element = HTMLElement>(selector: string): T[]
   click(target: string | Element): void
@@ -129,21 +131,24 @@ export function loadPage(file: string, path: string, options: PageOptions = {}):
   })
   const { window } = dom
   const document = window.document
+  // The feature modules use the browser's globals, so point them at this page.
+  const useGlobals = () =>
+    Object.assign(globalThis, {
+      window,
+      document,
+      Node: window.Node,
+      HTMLDialogElement: window.HTMLDialogElement,
+      requestAnimationFrame: window.requestAnimationFrame.bind(window),
+      cancelAnimationFrame: window.cancelAnimationFrame.bind(window),
+      IntersectionObserver: window.IntersectionObserver,
+      MutationObserver: window.MutationObserver,
+    })
 
   const page: Page = {
     window,
     document,
     boot() {
-      // The feature modules use the browser's globals, so point them at this page.
-      Object.assign(globalThis, {
-        window,
-        document,
-        Node: window.Node,
-        HTMLDialogElement: window.HTMLDialogElement,
-        requestAnimationFrame: window.requestAnimationFrame.bind(window),
-        cancelAnimationFrame: window.cancelAnimationFrame.bind(window),
-        IntersectionObserver: window.IntersectionObserver,
-      })
+      useGlobals()
       const logged: string[] = []
       const original = console.error
       console.error = (...args: unknown[]) => void logged.push(args.map(String).join(' '))
@@ -153,6 +158,10 @@ export function loadPage(file: string, path: string, options: PageOptions = {}):
         console.error = original
       }
       return [...logged, ...problems]
+    },
+    run(fn) {
+      useGlobals()
+      return fn()
     },
     $<T extends Element = HTMLElement>(selector: string) {
       const found = document.querySelector<T>(selector)

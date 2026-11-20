@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Accessibility, Enamel dental clinic in Guadalupe</title>
+    <meta name="description" content="How the Enamel website is built to work for everyone: keyboard use, screen readers, reduced motion, contrast, and how to tell us about a problem." />
+    <link rel="canonical" href="%VITE_SITE_URL%accessibility/" />
+    <meta name="robots" content="noindex" />
+    <meta name="theme-color" content="oklch(0.957 0.008 139.4)" />
+    <meta property="og:title" content="Accessibility, Enamel dental clinic in Guadalupe" />
+    <meta property="og:description" content="How the Enamel website is built to work for everyone: keyboard use, screen readers, reduced motion, contrast, and how to tell us about a problem." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="%VITE_SITE_URL%accessibility/" />
+    <meta property="og:image" content="%VITE_SITE_URL%og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Enamel, a family dental clinic in Guadalupe, Cebu City." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Accessibility, Enamel dental clinic in Guadalupe" />
+    <meta name="twitter:description" content="How the Enamel website is built to work for everyone: keyboard use, screen readers, reduced motion, contrast, and how to tell us about a problem." />
+    <meta name="twitter:image" content="%VITE_SITE_URL%og.png" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preload" href="/node_modules/@fontsource-variable/newsreader/files/newsreader-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/node_modules/@fontsource-variable/atkinson-hyperlegible-next/files/atkinson-hyperlegible-next-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/node_modules/@fontsource-variable/newsreader/files/newsreader-latin-ext-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <script type="module" src="/main.ts"></script>
+    <noscript>
+      <style>
+        [data-header] { position: sticky; }
+        body { padding-top: 0; }
+        [data-menu-button] { display: none; }
+        @media (max-width: 53.74rem) {
+          [data-header] > div { flex-wrap: wrap; }
+          [data-header] nav { order: 3; width: 100%; }
+          [data-menu] { position: static; display: flex; flex-direction: row; flex-wrap: wrap; padding: 0 0 0.5rem; border: 0; }
+          [data-menu] a { width: auto; }
+        }
+      </style>
+    </noscript>
+  </head>
+  <body class="pt-header">
+    <!-- include:header -->
+
+    <main id="main">
+      <div class="wrap-content pt-[clamp(2.5rem,1rem+6vw,6.5rem)] pb-section">
+        <h1 class="max-w-[13em]">Accessibility</h1>
+        <p class="mt-6 max-w-[38rem] text-lg leading-[1.55]">We want everyone to be able to read our prices, choose a treatment and book a visit, whatever device or assistive technology they use.</p>
+      </div>
+
+      <div class="wrap-content border-t border-line py-section">
+        <article class="max-w-[44rem]">
+          <h2 class="text-2xl">What we aim for</h2>
+          <p class="mt-4">The site aims to meet the Web Content Accessibility Guidelines (WCAG) 2.2 at level AA.</p>
+          <h2 class="mt-14 text-2xl">What that means on the site</h2>
+          <ul class="mt-4 list-disc pl-5 marker:text-sage">
+            <li class="mt-2">Everything works with a keyboard, with a visible focus outline. The tooth chart moves with the arrow keys, and Home and End jump to the ends of an arch.</li>
+            <li class="mt-2">The tooth chart has a plain list of teeth as an alternative, and every price list is real text.</li>
+            <li class="mt-2">Changes such as a filtered list or a new booking step are announced to screen readers.</li>
+            <li class="mt-2">Text and controls meet the contrast the guidelines ask for, and buttons, links and form fields are at least 40 pixels tall. The teeth on the chart are smaller, which is why a plain list is there too.</li>
+            <li class="mt-2">If you ask your device for reduced motion, nothing on the site moves.</li>
+            <li class="mt-2">Nothing on the site has a time limit.</li>
+          </ul>
+          <h2 class="mt-14 text-2xl">Known limits</h2>
+          <p class="mt-4">The tooth chart is a drawing: if it is hard to use, the list of teeth and the price list hold the same information.</p>
+          <h2 class="mt-14 text-2xl">Tell us about a problem</h2>
+          <p class="mt-4">If something doesn’t work for you, use the <a class="underline" href="/enamel/contact/">contact form</a> and choose “Accessibility”. This is a demonstration site, so messages are not sent, but a real clinic would reply and fix it.</p>
+        </article>
+      </div>
+    </main>
+
+    <!-- include:footer current="accessibility" -->
+  </body>
+</html>

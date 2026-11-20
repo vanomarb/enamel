@@ -1,0 +1,67 @@
+<footer class="bg-spruce text-on-spruce">
+  <div class="wrap-content py-[clamp(3rem,2rem+4vw,5rem)]">
+    <div class="grid overflow-hidden rounded-surface border border-on-spruce-muted/40 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+      <div class="grid content-start gap-6 bg-spruce-deep p-surface" data-clinic-card-front>
+        <div class="grid gap-2">
+          <p class="inline-flex min-h-11 items-center gap-2 justify-self-start font-display leading-none font-normal tracking-[-0.01em] text-[1.625rem] max-xs:text-[1.4375rem]">
+            <svg class="flex-none" viewBox="0 0 32 32" width="28" height="28" aria-hidden="true" focusable="false"><path d="M6 27C6 16 10.5 7.5 16 7.5S26 16 26 27" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" /><circle class="fill-apricot" cx="23.9" cy="14.6" r="3.9" /></svg>
+            <span>Enamel</span>
+          </p>
+          <p class="text-on-spruce-muted">Family dentistry in Guadalupe, Cebu City, with every price on the page.</p>
+        </div>
+        <h2 class="sr-only" id="footer-hours">Clinic hours</h2>
+        <dl class="grid border-t border-on-spruce-muted/30">
+          <div class="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 border-b border-on-spruce-muted/30 py-3"><dt class="text-sm text-on-spruce-muted">Monday to Saturday</dt><dd class="font-display text-lg whitespace-nowrap">9:00 AM to 6:00 PM</dd></div>
+          <div class="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 border-b border-on-spruce-muted/30 py-3"><dt class="text-sm text-on-spruce-muted">Sunday</dt><dd class="font-display text-lg whitespace-nowrap">Closed</dd></div>
+          <div class="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 border-b border-on-spruce-muted/30 py-3"><dt class="text-sm text-on-spruce-muted">Orthodontist</dt><dd class="font-display text-lg whitespace-nowrap">Saturdays</dd></div>
+        </dl>
+        <p><a class="button bg-on-spruce text-spruce hover:bg-spruce-wash focus-visible:outline-on-spruce" href="%BASE_URL%book/">Book a visit</a></p>
+      </div>
+      <div class="grid content-start grid-cols-2 gap-x-6 gap-y-8 p-surface" data-clinic-card-back>
+        <nav aria-labelledby="footer-clinic">
+          <h2 class="font-display text-lg font-normal tracking-normal" id="footer-clinic">The clinic</h2>
+          <ul class="mt-1">
+            <li><a class="inline-flex min-h-11 items-center text-on-spruce-muted underline-offset-[0.2em] hover:text-on-spruce hover:underline focus-visible:outline-on-spruce aria-[current=page]:text-on-spruce aria-[current=page]:underline" href="%BASE_URL%about/" data-page="about">About</a></li>
+            <li><a class="inline-flex min-h-11 items-center text-on-spruce-muted underline-offset-[0.2em] hover:text-on-spruce hover:underline focus-visible:outline-on-spruce aria-[current=page]:text-on-spruce aria-[current=page]:underline" href="%BASE_URL%contact/" data-page="contact">Contact</a></li>
+            <li><a class="inline-flex min-h-11 items-center text-on-spruce-muted underline-offset-[0.2em] hover:text-on-spruce hover:underline focus-visible:outline-on-spruce" href="%BASE_URL%new-patients/#faq">FAQ</a></li>
+          </ul>
+        </nav>
+        <nav aria-labelledby="footer-site">
+          <h2 class="font-display text-lg font-normal tracking-normal" id="footer-site">This website</h2>
+          <ul class="mt-1">
+            <li><button type="button" class="inline-flex min-h-11 items-center text-left text-on-spruce-muted underline-offset-[0.2em] hover:text-on-spruce hover:underline focus-visible:outline-on-spruce" data-concept>About this site</button></li>
+            <li><a class="inline-flex min-h-11 items-center text-on-spruce-muted underline-offset-[0.2em] hover:text-on-spruce hover:underline focus-visible:outline-on-spruce aria-[current=page]:text-on-spruce aria-[current=page]:underline" href="%BASE_URL%accessibility/" data-page="accessibility">Accessibility</a></li>
+            <li><a class="inline-flex min-h-11 items-center text-on-spruce-muted underline-offset-[0.2em] hover:text-on-spruce hover:underline focus-visible:outline-on-spruce aria-[current=page]:text-on-spruce aria-[current=page]:underline" href="%BASE_URL%terms/" data-page="terms">Terms of Service</a></li>
+            <li><a class="inline-flex min-h-11 items-center text-on-spruce-muted underline-offset-[0.2em] hover:text-on-spruce hover:underline focus-visible:outline-on-spruce aria-[current=page]:text-on-spruce aria-[current=page]:underline" href="%BASE_URL%privacy/" data-page="privacy">Privacy Policy</a></li>
+            <li><a class="inline-flex min-h-11 items-center text-on-spruce-muted underline-offset-[0.2em] hover:text-on-spruce hover:underline focus-visible:outline-on-spruce aria-[current=page]:text-on-spruce aria-[current=page]:underline" href="%BASE_URL%cookies/" data-page="cookies">Cookie Policy</a></li>
+          </ul>
+        </nav>
+        <form class="col-span-2 grid content-start gap-2 border-t border-on-spruce-muted/30 pt-6" data-mock-form="newsletter" novalidate>
+          <h2 class="font-display text-lg font-normal tracking-normal">A reminder when your check-up is due</h2>
+          <p class="text-sm text-on-spruce-muted">And clinic news, about once a month.</p>
+          <label class="sr-only" for="footer-email">Email address</label>
+          <div class="button-row gap-2">
+            <input class="min-h-11 min-w-0 flex-1 basis-48 rounded-control border border-on-spruce-muted bg-transparent px-3.5 text-on-spruce placeholder:text-on-spruce-muted focus-visible:outline-on-spruce aria-invalid:border-2" id="footer-email" name="email" type="email" autocomplete="email" placeholder="email@example.com" required />
+            <button class="button bg-on-spruce text-spruce hover:bg-spruce-wash focus-visible:outline-on-spruce" type="submit">Subscribe</button>
+          </div>
+          <p class="text-sm font-semibold text-on-spruce" id="footer-email-error" hidden></p>
+          <p class="min-h-6 text-sm" aria-live="polite" data-form-status></p>
+        </form>
+      </div>
+    </div>
+    <p class="mt-6 text-sm text-on-spruce-muted">© 2026 Enamel</p>
+  </div>
+</footer>
+
+<dialog class="m-auto w-[min(100%-2rem,32rem)] rounded-surface border border-line bg-surface p-0 text-spruce backdrop:bg-spruce-deep/50 motion-safe:open:animate-dialog-in motion-safe:open:backdrop:animate-fade-in" id="concept-dialog" aria-labelledby="concept-title" aria-describedby="concept-text">
+  <div class="grid gap-4 p-[clamp(1.5rem,1rem+2vw,2.25rem)]">
+    <h2 id="concept-title">About this site</h2>
+    <p id="concept-text">Enamel is a concept brand. This is a demonstration site: nothing you enter here is sent, and no payments are taken.</p>
+    <p>The clinic, its dentists, prices and schedule are examples. Bookings, the sign-in and the forms stay in your browser, which keeps only what it needs to show your appointments on this device.</p>
+    <ul class="grid gap-2">
+      <li><a class="inline-flex min-h-11 items-center font-semibold underline" href="%BASE_URL%terms/">Terms of Service</a></li>
+      <li><a class="inline-flex min-h-11 items-center font-semibold underline" href="%BASE_URL%privacy/">Privacy Policy</a></li>
+    </ul>
+    <button type="button" class="button button--quiet justify-self-start" data-concept-close autofocus>Close</button>
+  </div>
+</dialog>

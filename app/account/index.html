@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>My account, Enamel dental clinic in Guadalupe</title>
+    <meta name="description" content="Sign in to Enamel with your first name, an email or mobile number and a four-digit code to see the visits you booked here. A demonstration: nothing is sent." />
+    <link rel="canonical" href="%VITE_SITE_URL%account/" />
+    <meta name="robots" content="noindex" />
+    <meta name="theme-color" content="oklch(0.957 0.008 139.4)" />
+    <meta property="og:title" content="My account, Enamel dental clinic in Guadalupe" />
+    <meta property="og:description" content="Sign in to Enamel with your first name, an email or mobile number and a four-digit code to see the visits you booked here. A demonstration: nothing is sent." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="%VITE_SITE_URL%account/" />
+    <meta property="og:image" content="%VITE_SITE_URL%og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Enamel, a family dental clinic in Guadalupe, Cebu City." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="My account, Enamel dental clinic in Guadalupe" />
+    <meta name="twitter:description" content="Sign in to Enamel with your first name, an email or mobile number and a four-digit code to see the visits you booked here. A demonstration: nothing is sent." />
+    <meta name="twitter:image" content="%VITE_SITE_URL%og.png" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preload" href="/node_modules/@fontsource-variable/newsreader/files/newsreader-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/node_modules/@fontsource-variable/atkinson-hyperlegible-next/files/atkinson-hyperlegible-next-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/node_modules/@fontsource-variable/newsreader/files/newsreader-latin-ext-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <script type="module" src="/main.ts"></script>
+    <noscript>
+      <style>
+        [data-header] { position: sticky; }
+        body { padding-top: 0; }
+        [data-menu-button] { display: none; }
+        @media (max-width: 53.74rem) {
+          [data-header] > div { flex-wrap: wrap; }
+          [data-header] nav { order: 3; width: 100%; }
+          [data-menu] { position: static; display: flex; flex-direction: row; flex-wrap: wrap; padding: 0 0 0.5rem; border: 0; }
+          [data-menu] a { width: auto; }
+        }
+      </style>
+    </noscript>
+  </head>
+  <body class="pt-header">
+    <!-- include:header current="account" -->
+
+    <main id="main">
+      <div class="wrap-content min-h-[calc(100dvh-var(--spacing-header))] pt-[clamp(2.5rem,1rem+6vw,6.5rem)] pb-section" data-account>
+        <div class="mx-auto grid w-full max-w-[38rem] content-start gap-8">
+          <div class="grid gap-4">
+            <h1 class="max-w-[13em]"><span class="in-data-signed-in:hidden">Sign in</span><span class="hidden in-data-signed-in:inline">My appointments</span></h1>
+            <p class="text-lg leading-[1.55] in-data-signed-in:hidden">Tell us your first name and an email address or mobile number, and we’ll show you the visits you’ve booked. There’s no password to remember: you get a four-digit code instead.</p>
+            <p class="hidden text-lg leading-[1.55] in-data-signed-in:block">The visits you’ve booked on this device. The next one is at the top; past visits stay below as a record.</p>
+          </div>
+          <p class="rounded-control border border-line-strong bg-surface p-4 in-data-signed-in:hidden" data-removed hidden tabindex="-1">Removed. Enamel has nothing left in this browser: no appointments, no past visits and no sign-in.</p>
+          <div class="rounded-surface border border-line bg-surface p-surface in-data-signed-in:hidden">
+            <ol data-signin-steps>
+              <li class="step is-current group/step" aria-current="step" data-signin-step="contact">
+                <div class="flex min-h-7.5 items-center gap-3"><span class="step__marker" aria-hidden="true"></span><h2 class="min-w-0 flex-1 text-xl" id="signin-contact-title">Your name and contact</h2><button type="button" class="hidden min-h-11 flex-none px-2 text-sm font-semibold underline decoration-1 underline-offset-[0.2em] hover:decoration-2 group-[.is-done]/step:inline-flex group-[.is-done]/step:items-center" data-signin-back>Change<span class="sr-only"> your name or contact</span></button></div>
+                <p class="hidden text-sm text-sage group-[.is-done]/step:block" data-signin-summary></p>
+                <form class="grid gap-5 pt-5 max-sm:-ml-10" data-signin="contact" aria-labelledby="signin-contact-title" novalidate>
+                  <div class="grid gap-1"><label class="font-semibold" for="signin-name">First name</label><input class="mt-1 min-h-12 w-full rounded-control border border-line-strong bg-surface px-3.5 text-base focus-visible:border-spruce focus-visible:outline-offset-1 aria-invalid:border-2 aria-invalid:border-error aria-invalid:px-[calc(0.875rem-1px)]" id="signin-name" name="first-name" type="text" autocomplete="given-name" required /><p class="text-sm font-semibold text-error" id="signin-name-error" hidden></p></div>
+                  <div class="grid gap-1"><label class="font-semibold" for="signin-contact">Email or mobile number</label><p class="text-sm text-sage" id="signin-contact-hint">An email address, or a mobile number that starts with 09.</p><input class="mt-1 min-h-12 w-full rounded-control border border-line-strong bg-surface px-3.5 text-base focus-visible:border-spruce focus-visible:outline-offset-1 aria-invalid:border-2 aria-invalid:border-error aria-invalid:px-[calc(0.875rem-1px)]" id="signin-contact" name="contact" type="text" autocomplete="email" aria-describedby="signin-contact-hint" required /><p class="text-sm font-semibold text-error" id="signin-contact-error" hidden></p></div>
+                  <button class="button button--primary button--large justify-self-start" type="submit">Show my code</button>
+                </form>
+              </li>
+              <li class="step is-upcoming group/step" data-signin-step="code">
+                <div class="flex min-h-7.5 items-center gap-3"><span class="step__marker" aria-hidden="true"></span><h2 class="min-w-0 flex-1 text-xl group-[.is-upcoming]/step:text-sage" id="signin-code-title">Your code</h2></div>
+                <form class="grid gap-5 pt-5 max-sm:-ml-10" data-signin="code" aria-labelledby="signin-code-title" hidden novalidate>
+                  <p class="rounded-control bg-porcelain p-4 text-sm" id="signin-code-demo">Your code is <strong class="font-display text-lg tabular-nums" data-demo-code></strong>. A clinic would send it to <span data-code-contact></span>; this demonstration shows it here and sends nothing.</p>
+                  <div class="grid gap-1"><label class="font-semibold" for="signin-code">The four-digit code</label><input class="mt-1 min-h-12 w-full rounded-control border border-line-strong bg-surface px-3.5 text-base focus-visible:border-spruce focus-visible:outline-offset-1 aria-invalid:border-2 aria-invalid:border-error aria-invalid:px-[calc(0.875rem-1px)] max-w-40 font-display tabular-nums" id="signin-code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" aria-describedby="signin-code-demo" required /><p class="text-sm font-semibold text-error" id="signin-code-error" hidden></p></div>
+                  <button class="button button--primary button--large justify-self-start" type="submit">Sign in</button>
+                </form>
+              </li>
+            </ol>
+          </div>
+          <section class="hidden content-start gap-4 in-data-signed-in:grid" aria-labelledby="account-greeting">
+            <div class="grid gap-3 border-b border-line-strong pb-3 sm:flex sm:items-center sm:justify-between sm:gap-x-6">
+              <div class="min-w-0 sm:flex-1"><h2 class="truncate text-xl" id="account-greeting" tabindex="-1">Welcome, <span data-account-name></span></h2><p class="min-h-[1lh] truncate text-sm text-sage" data-account-contact></p></div>
+              <div class="button-row flex-none"><button type="button" class="button button--quiet button--small" data-wipe>Remove everything saved here</button><button type="button" class="button button--quiet button--small" data-signout>Sign out</button></div>
+            </div>
+            <div class="grid gap-3 rounded-control border border-line-strong bg-surface p-4" role="group" aria-labelledby="wipe-title" data-wipe-confirm hidden>
+              <p class="font-semibold" id="wipe-title" tabindex="-1">Remove everything saved here?</p>
+              <p class="text-sm text-sage">This clears what Enamel keeps in this browser: your appointments, past visits, your sign-in and any newsletter sign-up. It can’t be undone. Nothing was ever sent from this site, so there is nothing to remove anywhere else.</p>
+              <div class="button-row"><button type="button" class="button button--primary button--small" data-wipe-yes>Remove<span class="sr-only"> everything saved here</span></button><button type="button" class="button button--quiet button--small" data-wipe-keep>Keep<span class="sr-only"> it</span></button></div>
+            </div>
+            <ul class="border-t border-line" data-appointments></ul>
+            <p class="text-sage" data-appointments-empty hidden>No visits coming up. <a class="inline font-semibold text-spruce underline decoration-1 underline-offset-[0.2em] hover:decoration-2" href="/enamel/book/">Book a visit</a></p>
+            <div class="mt-4 grid gap-3" data-past hidden>
+              <h2 class="text-xl" id="past-title">Past visits</h2>
+              <ul class="border-t border-line" aria-labelledby="past-title" data-appointments-past></ul>
+            </div>
+          </section>
+          <p class="text-sm text-sage">This sign-in is a demonstration: the code appears on this page, and nothing you type leaves your browser. <button type="button" class="inline font-semibold text-spruce underline decoration-1 underline-offset-[0.2em] hover:decoration-2" data-concept>About this site</button></p>
+          <p class="sr-only" aria-live="polite" data-account-status></p>
+        </div>
+      </div>
+    </main>
+
+    <!-- include:footer -->
+  </body>
+</html>

@@ -1,0 +1,69 @@
+<script>
+  // firstWord is the same rule as firstWord() in app/lib/account.ts; tests/pages.test.ts runs both.
+  (() => {
+    const root = document.documentElement
+    root.classList.add('js')
+    setTimeout(() => root.hasAttribute('data-reveal-ready') || root.classList.remove('js'), 3000)
+    const firstWord = (name) => Array.from(String(name).trim().split(/\s+/)[0].replace(/["\\<>]/g, '')).slice(0, 16).join('')
+    try {
+      const name = firstWord(JSON.parse(localStorage.getItem('enamel.account') || 'null')?.firstName || '')
+      if (name) {
+        root.setAttribute('data-signed-in', '')
+        root.style.setProperty('--account-name', `"${name}"`)
+      }
+    } catch {}
+  })()
+</script>
+<a class="absolute top-2 left-2 z-30 -translate-y-[200%] rounded-control bg-spruce px-4 py-2 font-semibold text-on-spruce underline focus-visible:translate-none" href="#main">Skip to content</a>
+
+<header class="fixed inset-x-0 top-0 z-20 border-b border-transparent bg-porcelain data-compact:border-line motion-safe:transition-[border-color]" data-header>
+  <div class="wrap-content flex h-header items-center gap-4 max-lg:gap-2">
+    <!-- max-sm:-ml-1 lines the mark's stroke up with the page edge. -->
+    <a class="mr-auto inline-flex min-h-11 items-center gap-2 font-display leading-none font-normal tracking-[-0.01em] text-[1.625rem] max-sm:-ml-1 max-sm:min-w-11" href="%BASE_URL%" data-page="home">
+      <svg class="flex-none max-sm:size-8 sm:relative sm:-top-[0.18em]" viewBox="0 0 32 32" width="28" height="28" aria-hidden="true" focusable="false"><path d="M6 27C6 16 10.5 7.5 16 7.5S26 16 26 27" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" /><circle class="fill-apricot" cx="23.9" cy="14.6" r="3.9" /></svg>
+      <span class="max-sm:sr-only">Enamel</span>
+    </a>
+    <a class="button button--primary flex-none max-xs:px-3 lg:order-last" href="%BASE_URL%book/" data-page="book">Book a visit</a>
+    <nav aria-label="Main">
+      <!-- Pulled into the gutter so the icon lines up with the page edge. -->
+      <button class="group -mr-3 inline-flex size-11 items-center justify-center rounded-control hover:bg-spruce-wash lg:hidden" type="button" aria-expanded="false" aria-controls="site-menu" aria-haspopup="dialog" data-menu-button>
+        <i data-icon="list" data-weight="light" class="size-6 flex-none group-aria-expanded:hidden"></i>
+        <i data-icon="x" data-weight="light" class="hidden size-6 flex-none group-aria-expanded:block"></i>
+        <span class="sr-only">Menu</span>
+      </button>
+      <ul class="flex flex-wrap gap-x-1 max-lg:hidden" data-menu>
+        <li><a class="inline-flex min-h-11 items-center gap-2 rounded-control px-3 text-sm font-semibold hover:bg-spruce-wash aria-[current=page]:font-bold aria-[current=page]:underline aria-[current=page]:decoration-2 aria-[current=page]:underline-offset-[0.35em]" href="%BASE_URL%treatments/" data-page="treatments">Treatments</a></li>
+        <li><a class="inline-flex min-h-11 items-center gap-2 rounded-control px-3 text-sm font-semibold hover:bg-spruce-wash aria-[current=page]:font-bold aria-[current=page]:underline aria-[current=page]:decoration-2 aria-[current=page]:underline-offset-[0.35em]" href="%BASE_URL%new-patients/" data-page="new-patients">New patients</a></li>
+        <li><a class="inline-flex min-h-11 items-center gap-2 rounded-control px-3 text-sm font-semibold hover:bg-spruce-wash aria-[current=page]:font-bold aria-[current=page]:underline aria-[current=page]:decoration-2 aria-[current=page]:underline-offset-[0.35em]" href="%BASE_URL%team/" data-page="team">Dentists and hours</a></li>
+        <li><a class="inline-flex min-h-11 items-center gap-2 rounded-control px-3 text-sm font-semibold hover:bg-spruce-wash aria-[current=page]:font-bold aria-[current=page]:underline aria-[current=page]:decoration-2 aria-[current=page]:underline-offset-[0.35em]" href="%BASE_URL%account/" data-page="account"><i data-icon="user-circle" data-weight="light" class="size-5 flex-none"></i><span class="in-data-signed-in:hidden">Sign in</span><span class="hidden max-w-[12ch] truncate after:content-(--account-name) in-data-signed-in:block"></span></a></li>
+      </ul>
+    </nav>
+  </div>
+
+  <!-- The close button's right margin puts its x exactly where the menu icon was. -->
+  <dialog class="fixed inset-y-0 right-0 left-auto m-0 h-dvh max-h-none w-[min(22rem,86vw)] max-w-none overflow-y-auto overscroll-contain border-0 border-l border-line bg-porcelain p-0 text-spruce backdrop:bg-spruce-deep/50 motion-safe:open:animate-drawer-in motion-safe:open:backdrop:animate-fade-in" id="site-menu" aria-label="Menu">
+    <div class="flex min-h-full flex-col px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+      <div class="flex h-header flex-none items-center justify-end">
+        <button class="mr-[calc(var(--spacing-gutter)-2.25rem)] inline-flex size-11 items-center justify-center rounded-control hover:bg-spruce-wash" type="button" data-menu-close autofocus>
+          <i data-icon="x" data-weight="light" class="size-6 flex-none"></i>
+          <span class="sr-only">Close menu</span></button>
+      </div>
+      <nav class="mt-4" aria-label="Main">
+        <ul class="border-t border-line">
+          <li><a class="flex min-h-14 items-center border-b border-line py-2 font-display text-[1.75rem] leading-tight font-light tracking-[-0.01em] hover:text-spruce-deep aria-[current=page]:underline aria-[current=page]:decoration-2 aria-[current=page]:underline-offset-[0.2em]" href="%BASE_URL%treatments/" data-page="treatments">Treatments</a></li>
+          <li><a class="flex min-h-14 items-center border-b border-line py-2 font-display text-[1.75rem] leading-tight font-light tracking-[-0.01em] hover:text-spruce-deep aria-[current=page]:underline aria-[current=page]:decoration-2 aria-[current=page]:underline-offset-[0.2em]" href="%BASE_URL%new-patients/" data-page="new-patients">New patients</a></li>
+          <li><a class="flex min-h-14 items-center border-b border-line py-2 font-display text-[1.75rem] leading-tight font-light tracking-[-0.01em] hover:text-spruce-deep aria-[current=page]:underline aria-[current=page]:decoration-2 aria-[current=page]:underline-offset-[0.2em]" href="%BASE_URL%team/" data-page="team">Dentists and hours</a></li>
+          <li><a class="flex min-h-14 items-center gap-3 border-b border-line py-2 font-display text-[1.75rem] leading-tight font-light tracking-[-0.01em] hover:text-spruce-deep aria-[current=page]:underline aria-[current=page]:decoration-2 aria-[current=page]:underline-offset-[0.2em]" href="%BASE_URL%account/" data-page="account"><i data-icon="user-circle" data-weight="light" class="size-6 flex-none"></i><span class="in-data-signed-in:hidden">Sign in</span><span class="hidden max-w-[12ch] truncate after:content-(--account-name) in-data-signed-in:block"></span></a></li>
+        </ul>
+      </nav>
+      <div class="mt-auto grid gap-5 pt-10">
+        <div class="grid gap-0.5">
+          <p class="text-sm text-sage" data-today-label>Open Monday to Saturday</p>
+          <p class="font-display text-xl" data-today-hours>9:00 AM to 6:00 PM</p>
+          <p class="text-sm text-sage" data-today-note>Closed on Sundays.</p>
+        </div>
+        <a class="button button--primary button--large w-full" href="%BASE_URL%book/">Book a visit</a>
+      </div>
+    </div>
+  </dialog>
+</header>

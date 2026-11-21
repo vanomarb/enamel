@@ -303,6 +303,24 @@ test('the cementoenamel junction curves further toward the biting edge on front 
   for (const c of molars) assert.ok(c < 0.3, `a molar's junction rises ${c.toFixed(2)} of its half-width`)
 })
 
+test('each arch is a curved U: it turns a little more at every tooth, with no flat front and no corner at the canine', () => {
+  const layout = archLayout()
+  for (const quadrant of [2, 3]) {
+    // Seen from above, the line from each biting tip to the next, from the middle of the mouth back.
+    const tips = [1, 2, 3, 4, 5, 6, 7, 8].map((p) => {
+      const fdi = quadrant * 10 + p
+      return toWorld(layout.find((t) => t.fdi === fdi)!.matrix, [0, toothSizes(fdi).crownHeight, 0])
+    })
+    const headings = [0]
+    for (let p = 1; p < 8; p++) headings.push((Math.atan2(tips[p - 1][2] - tips[p][2], tips[p][0] - tips[p - 1][0]) * 180) / Math.PI)
+    const turns = headings.slice(1).map((h, p) => h - headings[p])
+    assert.ok(turns[0] > 10, `${quadrant}: the front teeth already curve, ${turns[0].toFixed(0)}° from the central to the lateral incisor`)
+    for (const [p, turn] of turns.entries()) {
+      assert.ok(turn > 0 && turn < 25, `${quadrant}: the arch turns ${turn.toFixed(0)}° from tooth ${p + 1} to tooth ${p + 2}`)
+    }
+  }
+})
+
 test('the arch is symmetric, with the patient’s right on the viewer’s left and the front teeth nearest', () => {
   const layout = archLayout()
   const at = (fdi: number) => toWorld(layout.find((t) => t.fdi === fdi)!.matrix, [0, 0, 0])

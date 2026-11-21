@@ -19,11 +19,13 @@ export interface PlacedTooth {
   chip: Vec3
 }
 
-/** The arch line through the biting edges: z = front - (a x² + b x⁴), with a and b found so the canine and the first
-    molar land at typical widths. Upper sits a little forward of lower (overjet). */
+/** The arch line through the biting edges, as a curved U: it bends evenly across the front teeth and eases off along the
+    sides, with a bend of k0 / (1 + (s / s0)⁴) per mm at s mm from the middle. k0 and s0 are found so the canine and the
+    first molar land at typical half-widths. Upper sits a little forward of lower (overjet), and the two stay 2 to 3 mm
+    apart all round. */
 const ARCH_FORM: Record<Arch, { front: number; canine: number; molar: number }> = {
-  upper: { front: 2.8, canine: 17.2, molar: 24.6 },
-  lower: { front: 0, canine: 13.4, molar: 22.2 },
+  upper: { front: 2.8, canine: 16.4, molar: 24.6 },
+  lower: { front: 0, canine: 12.8, molar: 22.2 },
 }
 
 /** Crown tilts in degrees: mesial tip and facial torque of the long axis. */
@@ -35,42 +37,52 @@ function archCurve(arch: Arch): { at: (s: number) => { x: number; z: number; tx:
   const widths = SPECS.filter((s) => s.arch === arch).sort((a, b) => a.position - b.position).map((s) => s.md)
   const sCanine = widths[0] + widths[1] + widths[2] / 2
   const sMolar = widths.slice(0, 5).reduce((a, b) => a + b, 0) + widths[5] / 2
-  const xAt = (a: number, b: number, s: number) => {
-    // Arc length of z = -(a x² + b x⁴) from 0 to x, inverted by stepping.
-    let x = 0
-    let acc = 0
-    const h = 0.05
-    while (acc < s) {
-      const slope = 2 * a * (x + h / 2) + 4 * b * (x + h / 2) ** 3
-      const step = h * Math.sqrt(1 + slope * slope)
-      if (acc + step >= s) return x + (h * (s - acc)) / step
-      acc += step
-      x += h
+  // Walk the line in small steps from the middle, turning by the bend at each step's midpoint.
+  const H = 0.02
+  const walk = (k0: number, s0: number, upTo: number) => {
+    const n = Math.ceil(upTo / H)
+    const xs = new Float64Array(n + 1)
+    const zs = new Float64Array(n + 1)
+    const turns = new Float64Array(n + 1)
+    for (let i = 1; i <= n; i++) {
+      const bend = k0 / (1 + (((i - 0.5) * H) / s0) ** 4)
+      const mid = turns[i - 1] + (bend * H) / 2
+      xs[i] = xs[i - 1] + Math.cos(mid) * H
+      zs[i] = zs[i - 1] - Math.sin(mid) * H
+      turns[i] = turns[i - 1] + bend * H
     }
-    return x
+    return { xs, zs, turns }
   }
-  let a = 0.02
-  let b = 3e-5
+  const xAt = (k0: number, s0: number, s: number) => walk(k0, s0, s).xs.at(-1)!
+  let k0 = 0.05
+  let s0 = 28
   for (let i = 0; i < 40; i++) {
-    const f1 = xAt(a, b, sCanine) - form.canine
-    const f2 = xAt(a, b, sMolar) - form.molar
+    const f1 = xAt(k0, s0, sCanine) - form.canine
+    const f2 = xAt(k0, s0, sMolar) - form.molar
     if (Math.abs(f1) + Math.abs(f2) < 1e-6) break
-    const da = 1e-5
-    const db = 1e-8
-    const j11 = (xAt(a + da, b, sCanine) - form.canine - f1) / da
-    const j12 = (xAt(a, b + db, sCanine) - form.canine - f1) / db
-    const j21 = (xAt(a + da, b, sMolar) - form.molar - f2) / da
-    const j22 = (xAt(a, b + db, sMolar) - form.molar - f2) / db
+    const dk = 1e-5
+    const ds = 1e-3
+    const j11 = (xAt(k0 + dk, s0, sCanine) - form.canine - f1) / dk
+    const j12 = (xAt(k0, s0 + ds, sCanine) - form.canine - f1) / ds
+    const j21 = (xAt(k0 + dk, s0, sMolar) - form.molar - f2) / dk
+    const j22 = (xAt(k0, s0 + ds, sMolar) - form.molar - f2) / ds
     const det = j11 * j22 - j12 * j21
-    a -= (f1 * j22 - f2 * j12) / det
-    b -= (j11 * f2 - j21 * f1) / det
+    k0 -= (f1 * j22 - f2 * j12) / det
+    s0 -= (j11 * f2 - j21 * f1) / det
   }
+  const line = walk(k0, s0, widths.reduce((a, b) => a + b, 0) + 10)
   return {
     at(s) {
-      const x = xAt(a, b, s)
-      const slope = 2 * a * x + 4 * b * x ** 3
-      const len = Math.hypot(1, slope)
-      return { x, z: form.front - (a * x * x + b * x ** 4), tx: 1 / len, tz: -slope / len }
+      const f = Math.min(s / H, line.xs.length - 1)
+      const i = Math.min(Math.floor(f), line.xs.length - 2)
+      const t = f - i
+      const turn = line.turns[i] + (line.turns[i + 1] - line.turns[i]) * t
+      return {
+        x: line.xs[i] + (line.xs[i + 1] - line.xs[i]) * t,
+        z: form.front + line.zs[i] + (line.zs[i + 1] - line.zs[i]) * t,
+        tx: Math.cos(turn),
+        tz: -Math.sin(turn),
+      }
     },
   }
 }

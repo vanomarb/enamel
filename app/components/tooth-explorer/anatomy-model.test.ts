@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { TEETH } from '../../lib/teeth.ts'
 import { archLayout, canalCount, gumMesh, rootCount, toWorld, toothApices, toothLandmarks, toothLayers, toothShell, toothSizes, type MeshData, type Vec3 } from './anatomy-model.ts'
+import { gumInside } from './anatomy/gum.ts'
 
 const ALL = TEETH.map((t) => t.fdi)
 /** One of each kind: left and right partners share a mesh, so the right side covers all 16 shapes. */
@@ -170,6 +171,52 @@ test('the gum carries on across the inside of each arch: a vaulted roof over the
   const floor = midline('lower', 36)
   const top = floor.length ? Math.max(...floor) : NaN
   assert.ok(top > -8 && top < -1, `the floor tops out ${top.toFixed(1)} mm from the bite`)
+})
+
+test('the roof and the floor hang from a smooth line along the gum, so the papillae throw no ridges across them', () => {
+  for (const arch of ['upper', 'lower'] as const) {
+    const { at, points } = gumInside(arch)
+    assert.ok(points.length > 100, `${arch}: ${points.length} points along the line`)
+    for (let k = 1; k < points.length; k++) {
+      const step = Math.abs(points[k][1] - points[k - 1][1])
+      assert.ok(step < 0.3, `${arch}: the line steps ${step.toFixed(2)} mm at ${at[k].toFixed(1)} mm along the arch`)
+    }
+    // Against the mean of everything within 6 mm either way.
+    for (let k = 0; k < points.length; k++) {
+      const near = points.filter((_, j) => Math.abs(at[j] - at[k]) <= 6)
+      const mean = near.reduce((sum, p) => sum + p[1], 0) / near.length
+      const off = Math.abs(points[k][1] - mean)
+      assert.ok(off < 0.5, `${arch}: the line strays ${off.toFixed(2)} mm from its neighbourhood at ${at[k].toFixed(1)} mm along the arch`)
+    }
+  }
+})
+
+test('up the gum’s cheek-side walls, each long grid line keeps to one height all round the arch', () => {
+  for (const arch of ['upper', 'lower'] as const) {
+    const m = gumMesh(arch)
+    const up = arch === 'lower' ? 1 : -1
+    const necks = archLayout().filter((p) => p.arch === arch).map((p) => toWorld(p.matrix, [0, 0, 0]))
+    const cx = necks.reduce((sum, n) => sum + n[0], 0) / necks.length
+    const cz = necks.reduce((sum, n) => sum + n[2], 0) / necks.length
+    const out = (x: number, z: number) => Math.hypot(x - cx, z - cz)
+    // In front of the last molars' necks, where the body has yet to round off; outside the nearest neck and facing away
+    // from the middle of the arch; steep; and a couple of mm or more under the gum line, below the papillae.
+    const back = Math.min(...necks.map((n) => n[2])) + 1
+    const levels: number[] = []
+    for (let i = 0; i < m.positions.length / 3; i++) {
+      const [x, y, z] = point(m, i)
+      const [nx, ny, nz] = [m.normals[3 * i], m.normals[3 * i + 1], m.normals[3 * i + 2]]
+      const depth = m.grid[3 * i + 2]
+      if (z < back || Math.abs(ny) > 0.3 || depth < 2 || depth > 6 || nx * (x - cx) + nz * (z - cz) <= 0) continue
+      const neck = necks.reduce((best, n) => (Math.hypot(n[0] - x, n[2] - z) < Math.hypot(best[0] - x, best[2] - z) ? n : best))
+      if (out(x, z) < out(neck[0], neck[2])) continue
+      // A line every cell of v; on these walls v runs with the height, so v + height is the same everywhere.
+      levels.push(m.grid[3 * i + 1] + up * y)
+    }
+    assert.ok(levels.length > 400, `${arch}: ${levels.length} wall points`)
+    const spread = Math.max(...levels) - Math.min(...levels)
+    assert.ok(spread < 0.05, `${arch}: the lines wander ${spread.toFixed(2)} mm up and down the walls`)
+  }
 })
 
 test('the pulp sits inside the dentin, and the dentin inside the tooth', () => {

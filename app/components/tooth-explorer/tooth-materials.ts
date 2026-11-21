@@ -146,14 +146,11 @@ const FRAGMENT = /* glsl */ `
   #include <color_fragment>
   #ifdef GRID_BODY
     // Gum near the teeth, a little denser; bone further down, dense enough that only about a fifth of a root shows
-    // through it.
+    // through it. Evenly translucent otherwise: the gum line is just the edge of the surface, with no band along it.
     diffuseColor.rgb = mix(diffuseColor.rgb, uDeep, smoothstep(1.5, 6.0, vGrid.z));
     diffuseColor.a *= mix(1.15, 1.1, smoothstep(0.8, 4.5, vGrid.z));
-    // A slightly deeper collar along the gum line itself, wrapping each tooth's neck.
-    float collar = 1.0 - smoothstep(0.15, 0.9, vGrid.z);
-    diffuseColor.rgb = mix(diffuseColor.rgb, uDeep * 0.92, 0.35 * collar);
-    diffuseColor.a = min(diffuseColor.a * (1.0 + 0.2 * collar), 0.86);
-    float gridCover = max(gridLine(vGrid.x, uCell), gridLine(vGrid.y, uCell));
+    // Deep down toward the jaw's lower edge the lines fade a little, so the gum line and the walls under it read first.
+    float gridCover = max(gridLine(vGrid.x, uCell), gridLine(vGrid.y, uCell)) * (1.0 - 0.3 * smoothstep(9.0, 20.0, vGrid.z));
     vec3 line = uLine;
   #else
     // Lines around a tooth crowd toward its poles: keep every 2nd, 4th, 8th… as they do, cross-fading between.
@@ -174,9 +171,9 @@ const FRAGMENT = /* glsl */ `
 const DIM = /* glsl */ `
   #include <opaque_fragment>
   #ifdef GRID_BODY
-    // Denser where the surface turns away from the eye, so the jaw's outline and the rounded gum line read.
+    // A touch denser right at the outline, where the surface turns away from the eye, so the jaw's edge reads.
     float facing = abs(dot(normalize(normal), normalize(vViewPosition)));
-    gl_FragColor.a = min(gl_FragColor.a * mix(1.0, 1.35, pow(1.0 - facing, 2.0)), 0.88);
+    gl_FragColor.a = min(gl_FragColor.a * mix(1.0, 1.12, pow(1.0 - facing, 3.0)), 0.86);
   #endif
   gl_FragColor.rgb = mix(gl_FragColor.rgb, uBackdrop, uDim);
 `

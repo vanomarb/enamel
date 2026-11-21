@@ -6,15 +6,31 @@ import { shapeOf, shellOf, toothShell } from './tooth.ts'
 import { archLayout, toWorld } from './layout.ts'
 
 /* The gum and jaw bone around each arch's roots: one translucent body, scalloped at the gum line. Inside the arch it
-   carries on as the roof of the mouth over the upper teeth, and as a filled, gently domed floor inside the lower. */
+   carries on as the roof of the mouth over the upper teeth, and as a filled, gently domed floor inside the lower.
 
-const gums = new Map<Arch, MeshData>()
+   Only the gum line itself is drawn tooth by tooth. Everything under it is smoothed along the arch over about 12 mm, so
+   the walls read as one calm surface, and the grid's long lines keep to one height up the walls, running level like
+   the courses of a wall. */
+
+/** Where the inside of the arch meets the gum's tongue side: a point per station, with each station's place along the
+    arch in mm. */
+export interface GumInside {
+  at: number[]
+  points: Vec3[]
+}
+
+const gums = new Map<Arch, { mesh: MeshData; inside: GumInside }>()
 
 /**
  * One jaw's gum and bone as a closed, rounded horseshoe around the roots. Its top follows each tooth's neck with a
  * scalloped gum line, rising to a papilla between teeth.
  */
-export function gumMesh(arch: Arch): MeshData {
+export const gumMesh = (arch: Arch): MeshData => gumOf(arch).mesh
+
+/** The line the roof (upper) or the floor (lower) hangs from, along the gum's tongue side. */
+export const gumInside = (arch: Arch): GumInside => gumOf(arch).inside
+
+function gumOf(arch: Arch): { mesh: MeshData; inside: GumInside } {
   const cached = gums.get(arch)
   if (cached) return cached
   const up = arch === 'lower' ? 1 : -1
@@ -59,6 +75,7 @@ export function gumMesh(arch: Arch): MeshData {
   }
   const line = spline2([ext(pts[0], pts[1]), ...pts, ext(pts[pts.length - 1], pts[pts.length - 2])], false, 12)
   const stationCount = 210
+  const last = stationCount - 1
   const { pts: stations, at } = resample(line, stationCount, false)
   // Each tooth's place along the line.
   const toothAt = teeth.map((t) => {
@@ -76,96 +93,179 @@ export function gumMesh(arch: Arch): MeshData {
     })
     return sum / weight
   }
+  /** Station values smoothed along the arch: a bell about reach mm across each way, about a 12 mm moving average. */
+  const calm = (values: number[], reach = 5.5) =>
+    values.map((_, k) => {
+      let sum = 0
+      let weight = 0
+      for (let j = 0; j < stationCount; j++) {
+        const d = (at[j] - at[k]) / reach
+        if (d * d > 9) continue
+        const w = Math.exp(-d * d)
+        sum += w * values[j]
+        weight += w
+      }
+      return sum / weight
+    })
   // The gum line: each tooth's neck sits in a bowl that rises to a papilla between it and its neighbours. A soft
   // minimum joins the bowls, so the papillae come to rounded points rather than creases.
   const scallop = (a: number, side: 'mF' | 'mL') => {
     const heights = teeth.map((t, i) => t[side] + (side === 'mF' ? 1 : 0.85) * t.papilla * Math.min(Math.abs(a - toothAt[i]) / t.half, 1.3) ** 2.4)
     const m = Math.min(...heights)
-    return m - 0.3 * Math.log(heights.reduce((sum, h) => sum + Math.exp(-(h - m) / 0.3), 0))
+    return m - 0.35 * Math.log(heights.reduce((sum, h) => sum + Math.exp(-(h - m) / 0.35), 0))
   }
+  const gF = at.map((a) => scallop(a, 'mF'))
+  const gL = at.map((a) => scallop(a, 'mL'))
+  // At the gum line the body hugs each tooth's neck; a few mm down, its walls and gum lines are smoothed along the arch,
+  // with at most a faint swell over a long root.
+  const fNeck = at.map((a) => blended(a, (t) => t.f))
+  const lNeck = at.map((a) => blended(a, (t) => t.l))
+  const frRaw = at.map((a) => blended(a, (t) => t.fr))
+  const lrRaw = at.map((a) => blended(a, (t) => t.lr))
+  const f = calm(fNeck)
+  const l = calm(lNeck)
+  const gFs = calm(gF)
+  const gLs = calm(gL)
+  const swellF = calm(fNeck.map((x, k) => Math.max(x + 1.4, frRaw[k] + 1.4)))
+  const footF = calm(fNeck.map((x, k) => Math.max(x * 0.45 + 0.6, frRaw[k] + 0.9)))
+  const swellL = calm(lNeck.map((x, k) => Math.max(x + 1.3, lrRaw[k] + 1.4)))
+  const swellL2 = calm(lNeck.map((x, k) => Math.max(x + 1.7, lrRaw[k] + 1.2)))
+  const footL = calm(lNeck.map((x, k) => Math.max(x * 0.45 + 0.6, lrRaw[k] + 0.9)))
   // The jaw's lower edge: below every root tip, then smoothed along the arch so it reads as one rounded body.
-  const envelope = at.map((a) => Math.min(...teeth.map((t, i) => t.deep + 2.5 * ((a - toothAt[i]) / 18) ** 2)))
-  const deepAt = envelope.map((_, k) => {
-    let sum = 0
-    let n = 0
-    for (let j = 0; j < stationCount; j++) {
-      if (Math.abs(at[j] - at[k]) > 10) continue
-      sum += envelope[j]
-      n++
-    }
-    return sum / n - 0.6
+  const deepAt = calm(at.map((a) => Math.min(...teeth.map((t, i) => t.deep + 2.5 * ((a - toothAt[i]) / 18) ** 2))), 7).map((d) => d - 0.6)
+  // The inside hangs from a line a little under the tongue-side gum line's lowest points, smoothed so that the papillae
+  // above it throw no ridges across the roof or floor.
+  const valley = at.map((a) => {
+    let low = Infinity
+    for (let j = 0; j < stationCount; j++) if (Math.abs(at[j] - a) <= 6) low = Math.min(low, gL[j])
+    return low
   })
+  const hang = calm(valley, 4).map((h) => h - (arch === 'upper' ? 0.9 : 0.5))
+  // Past the last teeth the body rounds off toward the middle of its section; the inside stops where that begins.
+  const endFade = at.map((a) => Math.min(smooth(0, 5, a), smooth(0, 5, at[last] - a)))
+
   /* Each section is a closed curve through 16 control points, sampled at fixed places on the curve, so a point keeps its
      place from one section to the next and the walls stay smooth along the arch: the gum line's bumps stay at the top. */
-  const PER = 3
+  const PER = 4
   const CONTROLS = 16
   const SECTION = CONTROLS * PER
   const BOTTOM = 8 * PER
-  const sections: Vec3[][] = []
-  const depths: number[][] = []
-  const vAround: number[][] = []
-  // Where the roof of the mouth (upper) or the floor (lower) carries on from the gum's tongue side, station by station.
-  const inner: Vec3[] = []
+  // The facial and lingual walls about 4 mm under the gum line, where the grid's level lines are pinned.
+  const FACIAL = 4 * PER
+  const LINGUAL = 12 * PER
+  const frames: { px: number; pz: number; nx: number; nz: number }[] = []
+  const flats: [number, number][][] = []
   for (let k = 0; k < stationCount; k++) {
     const [px, pz] = stations[k]
-    const [qx, qz] = stations[Math.min(k + 1, stationCount - 1)]
+    const [qx, qz] = stations[Math.min(k + 1, last)]
     const [ox, oz] = stations[Math.max(k - 1, 0)]
     const tl = Math.hypot(qx - ox, qz - oz)
-    const nx = (qz - oz) / tl
-    const nz = -(qx - ox) / tl
+    frames.push({ px, pz, nx: (qz - oz) / tl, nz: -(qx - ox) / tl })
     const a = at[k]
-    const f = blended(a, (t) => t.f)
-    const l = blended(a, (t) => t.l)
-    const fr = blended(a, (t) => t.fr)
-    const lr = blended(a, (t) => t.lr)
-    const gF = scallop(a, 'mF')
-    const gL = scallop(a, 'mL')
     const deep = deepAt[k]
-    const mid = (l - f) / 2
+    const mid = (l[k] - f[k]) / 2
     const between = smooth(0.6, 1, Math.min(...teeth.map((t, i) => Math.abs(a - toothAt[i]) / t.half)))
-    const top = Math.max(gF, gL) - 0.6 - 0.8 * between
+    const top = Math.max(gF[k], gL[k]) - 0.6 - 0.8 * between
     // A rounded alveolar body: gum lines hugging the neck, walls bulging a little over the roots, a rounded underside.
     const control: [number, number][] = [
       [mid, top],
-      [-(f - 0.6), gF + 0.2],
-      [-f, gF],
-      [-(f + 0.75), gF - 1.1],
-      [-(f + 1.5), gF - 4],
-      [-(f + 1.9), lerp(gF, deep, 0.5)],
-      [-Math.max(f + 1.4, fr + 1.4), lerp(gF, deep, 0.8)],
-      [-Math.max(f * 0.45 + 0.6, fr + 0.9), deep + 0.8],
+      [-(fNeck[k] - 0.6), gF[k] + 0.2],
+      [-fNeck[k], gF[k]],
+      [-(lerp(fNeck[k], f[k], 0.5) + 0.75), gF[k] - 1.1],
+      [-(f[k] + 1.5), gFs[k] - 4],
+      [-(f[k] + 1.9), lerp(gFs[k], deep, 0.5)],
+      [-swellF[k], lerp(gFs[k], deep, 0.8)],
+      [-footF[k], deep + 0.8],
       [mid * 0.5, deep - 0.4],
-      [Math.max(l * 0.45 + 0.6, lr + 0.9), deep + 0.8],
-      [Math.max(l + 1.3, lr + 1.4), lerp(gL, deep, 0.8)],
-      [Math.max(l + 1.7, lr + 1.2), lerp(gL, deep, 0.5)],
-      [l + 1.3, gL - 4],
-      [l + 0.7, gL - 1.1],
-      [l, gL],
-      [l - 0.6, gL + 0.2],
+      [footL[k], deep + 0.8],
+      [swellL[k], lerp(gLs[k], deep, 0.8)],
+      [swellL2[k], lerp(gLs[k], deep, 0.5)],
+      [l[k] + 1.3, gLs[k] - 4],
+      [lerp(lNeck[k], l[k], 0.5) + 0.7, gL[k] - 1.1],
+      [lNeck[k], gL[k]],
+      [lNeck[k] - 0.6, gL[k] + 0.2],
     ]
-    // Past the last teeth the body rounds off toward the middle of its section.
-    const endFade = Math.min(smooth(0, 5, a), smooth(0, 5, at[stationCount - 1] - a))
     const cy = (top + deep) / 2
-    const closed = control.map(([w, h]) => [mid + (w - mid) * (0.25 + 0.75 * endFade), cy + (h - cy) * (0.35 + 0.65 * endFade)] as [number, number])
-    const section = spline2(closed, true, PER)
-    sections.push(section.map(([w, h]) => [px + w * nx, up * h, pz + w * nz]))
-    // On the tongue-side wall just past the gum line, so the inside reads as the same gum carried on across.
-    const [iw, ih] = arch === 'upper' ? [l + 0.4, gL - 1.2] : [l + 0.4, gL - 0.8]
-    const fw = mid + (iw - mid) * (0.25 + 0.75 * endFade)
-    const fh = cy + (ih - cy) * (0.35 + 0.65 * endFade)
-    inner.push([px + fw * nx, up * fh, pz + fw * nz])
-    depths.push(section.map(([, h]) => Math.max(0, Math.max(gF, gL) - h)))
-    // Around the section, measured both ways from the underside, so the grid's long lines run evenly along the walls.
-    const around = [0]
-    for (let i = 1; i <= SECTION; i++) around.push(around[i - 1] + Math.hypot(section[i % SECTION][0] - section[i - 1][0], section[i % SECTION][1] - section[i - 1][1]))
-    vAround.push(around.map((v) => v - around[BOTTOM]))
+    const closed = control.map(([w, h]) => [mid + (w - mid) * (0.25 + 0.75 * endFade[k]), cy + (h - cy) * (0.35 + 0.65 * endFade[k])] as [number, number])
+    flats.push(loop(closed, PER))
   }
-  // Along the arch, each long line measures its own length from the middle of the mouth, so cells stay even on the
-  // outer and inner walls alike.
+
+  /* The grid's long lines. Up the walls v is height, so each line keeps to one level all the way round the arch; under the
+     jaw, where the body is nearly flat, and over the rolled lip at the gum line, it is length round the section, so the
+     cells stay square. The two walls' levels are pinned to the same heights: the tongue side's lower wall, hidden behind
+     the roof or under the floor, takes up the difference. */
+  const FOOT = 9 * PER
+  const steps = flats.map((section) =>
+    section.map((_, i) => {
+      const [w0, h0] = section[(i + SECTION - 1) % SECTION]
+      const [w1, h1] = section[i]
+      const ds = Math.hypot(w1 - w0, h1 - h0)
+      const dh = Math.abs(h1 - h0)
+      const wall = smooth(0.45, 0.75, dh / (ds || 1))
+      return { ds, dv: wall * dh + (1 - wall) * ds }
+    }),
+  )
+  const sum = (k: number, from: number, to: number) => {
+    let total = 0
+    for (let i = from + 1; i <= to; i++) total += steps[k][i].dv
+    return total
+  }
+  // The levels' offset, chosen so the tongue side's lower wall is stretched as little as possible on average.
+  let offset = 0
+  let full = 0
+  for (let k = 0; k < stationCount; k++) {
+    if (endFade[k] < 1) continue
+    offset += (sum(k, FACIAL, LINGUAL) - flats[k][FACIAL][1] - flats[k][LINGUAL][1]) / 2
+    full++
+  }
+  offset /= full
+  const vAround: number[][] = []
+  const depths: number[][] = []
+  for (let k = 0; k < stationCount; k++) {
+    const section = flats[k]
+    const step = steps[k]
+    const level = new Array<number>(SECTION + 1)
+    level[FACIAL] = -section[FACIAL][1] - offset
+    for (let i = FACIAL; i > 0; i--) level[i - 1] = level[i] - step[i].dv
+    for (let i = FACIAL + 1; i <= FOOT; i++) level[i] = level[i - 1] + step[i].dv
+    const stretch = (section[LINGUAL][1] + offset - level[FOOT]) / sum(k, FOOT, LINGUAL)
+    for (let i = FOOT + 1; i <= LINGUAL; i++) level[i] = level[i - 1] + stretch * step[i].dv
+    for (let i = LINGUAL + 1; i <= SECTION; i++) level[i] = level[i - 1] + step[i % SECTION].dv
+    // Where the body rounds off past the last teeth, the lines ease back to plain length round the section.
+    const around = [0]
+    for (let i = 1; i <= SECTION; i++) around.push(around[i - 1] + step[i % SECTION].ds)
+    vAround.push(level.map((v, i) => lerp(around[i] - around[BOTTOM], v, endFade[k])))
+    const gum = Math.max(gFs[k], gLs[k])
+    depths.push(section.map(([, h]) => Math.max(0, gum - h)))
+  }
+  const world = (k: number, [w, h]: [number, number]): Vec3 => [frames[k].px + w * frames[k].nx, up * h, frames[k].pz + w * frames[k].nz]
+  const sections = flats.map((section, k) => section.map((p) => world(k, p)))
+
+  // Where the roof (upper) or the floor (lower) carries on from the gum's tongue side: on the wall itself, at the height
+  // it hangs from, from where the body starts to round off at one end to the same place at the other.
+  const inside: GumInside = { at: [], points: [] }
+  for (let k = 0; k < stationCount; k++) {
+    if (endFade[k] < 1) continue
+    const section = flats[k]
+    let p: [number, number] = section[14 * PER]
+    for (let i = 14 * PER; i > BOTTOM; i--) {
+      const [w0, h0] = section[i - 1]
+      const [w1, h1] = section[i]
+      if (h0 > hang[k] || h1 < hang[k]) continue
+      p = [lerp(w0, w1, (hang[k] - h0) / (h1 - h0 || 1)), hang[k]]
+      break
+    }
+    inside.at.push(at[k])
+    inside.points.push(world(k, p))
+  }
+
+  // Along the arch, each long line measures its own length from the middle of the mouth, seen from above (so the
+  // papillae's rise and fall does not bend the lines across), and cells stay even on the outer and inner walls alike.
   const middle = Math.floor(stationCount / 2)
   const uAlong: number[][] = sections.map(() => new Array(SECTION).fill(0))
-  for (let k = middle + 1; k < stationCount; k++) for (let i = 0; i < SECTION; i++) uAlong[k][i] = uAlong[k - 1][i] + length(sub(sections[k][i], sections[k - 1][i]))
-  for (let k = middle - 1; k >= 0; k--) for (let i = 0; i < SECTION; i++) uAlong[k][i] = uAlong[k + 1][i] - length(sub(sections[k][i], sections[k + 1][i]))
+  const flatGap = (p: Vec3, q: Vec3) => Math.hypot(p[0] - q[0], p[2] - q[2])
+  for (let k = middle + 1; k < stationCount; k++) for (let i = 0; i < SECTION; i++) uAlong[k][i] = uAlong[k - 1][i] + flatGap(sections[k][i], sections[k - 1][i])
+  for (let k = middle - 1; k >= 0; k--) for (let i = 0; i < SECTION; i++) uAlong[k][i] = uAlong[k + 1][i] - flatGap(sections[k][i], sections[k + 1][i])
   const parts: Part[] = []
   const body = newPart()
   for (let k = 0; k < stationCount; k++) {
@@ -187,7 +287,7 @@ export function gumMesh(arch: Arch): MeshData {
     }
   }
   // Caps at both ends.
-  for (const [k, outward] of [[0, -1], [stationCount - 1, 1]] as const) {
+  for (const [k, outward] of [[0, -1], [last, 1]] as const) {
     const ring = sections[k]
     const centre = scale(ring.reduce((s2, p) => add(s2, p), [0, 0, 0] as Vec3), 1 / SECTION)
     const start = body.positions.length / 3
@@ -200,40 +300,71 @@ export function gumMesh(arch: Arch): MeshData {
     }
   }
   parts.push(body)
-  parts.push(innerPlate(inner, up, arch === 'upper' ? { depth: 0.38, most: 13, thick: 3, rise: false } : { depth: 0.1, most: 3, thick: 12, rise: true }))
-  const mesh = finish(parts)
-  gums.set(arch, mesh)
-  return mesh
+  parts.push(innerPlate(inside.points, up, arch === 'upper' ? { depth: 0.38, most: 13, thick: 3, rise: false, power: 0.8 } : { depth: 0.1, most: 3, thick: 12, rise: true, power: 1 }))
+  const built = { mesh: finish(parts), inside }
+  gums.set(arch, built)
+  return built
+}
+
+/** Centripetal Catmull-Rom round a closed loop, per points to a segment. Unlike the even kind it never overshoots where a
+    short segment meets a long one, so the roll at the gum line stays clean whatever the papilla does below it. */
+function loop(points: [number, number][], per: number): [number, number][] {
+  const n = points.length
+  const out: [number, number][] = []
+  const get = (i: number) => points[((i % n) + n) % n]
+  const knot = (a: [number, number], b: [number, number]) => Math.max(Math.hypot(b[0] - a[0], b[1] - a[1]) ** 0.5, 1e-4)
+  const towards = (a: [number, number], b: [number, number], ta: number, tb: number, t: number): [number, number] => {
+    const s = (t - ta) / (tb - ta)
+    return [a[0] + (b[0] - a[0]) * s, a[1] + (b[1] - a[1]) * s]
+  }
+  for (let i = 0; i < n; i++) {
+    const [p0, p1, p2, p3] = [get(i - 1), get(i), get(i + 1), get(i + 2)]
+    const t1 = knot(p0, p1)
+    const t2 = t1 + knot(p1, p2)
+    const t3 = t2 + knot(p2, p3)
+    for (let s = 0; s < per; s++) {
+      const t = t1 + ((t2 - t1) * s) / per
+      const a1 = towards(p0, p1, 0, t1, t)
+      const a2 = towards(p1, p2, t1, t2, t)
+      const a3 = towards(p2, p3, t2, t3, t)
+      out.push(towards(towards(a1, a2, 0, t2, t), towards(a2, a3, t1, t3, t), t1, t2, t))
+    }
+  }
+  return out
 }
 
 /**
  * The inside of the arch: a body from each station's tongue-side point to its partner across the mouth, from behind the
  * last molars to behind the front teeth. Its mouth side vaults away from the bite (the roof) or domes gently toward it
- * (the floor) by a share of the width (depth, at most most mm); it is thick mm through at the middle. The two faces meet
- * along the gum and are closed at both ends.
+ * (the floor) by a share of the width (depth, at most most mm), in a smooth sine profile raised to power; it is thick mm
+ * through at the middle. The two faces meet along the gum and are closed at both ends.
  */
-function innerPlate(inner: Vec3[], up: number, vault: { depth: number; most: number; thick: number; rise: boolean }): Part {
+function innerPlate(inner: Vec3[], up: number, vault: { depth: number; most: number; thick: number; rise: boolean; power: number }): Part {
   const plate = newPart()
   const last = inner.length - 1
   const rows = Math.floor(inner.length / 2)
-  const ACROSS = 18
+  const ACROSS = 28
   const away: Vec3 = [0, -up, 0]
   const oral: Vec3[][] = []
   const nasal: Vec3[][] = []
   const across: number[][] = []
   const middles: Vec3[] = []
+  // Over its last 12 mm the vault eases down toward the gum and thins, so its back edge is a low lip rather than a cliff.
+  let fromBack = 0
   for (let r = 0; r < rows; r++) {
     const a = inner[r]
     const b = inner[last - r]
+    if (r > 0) fromBack += length(sub(a, inner[r - 1]))
+    const ease = smooth(0, 12, fromBack)
     const width = length(sub(b, a))
-    const sink = Math.min(vault.most, vault.depth * width) * (vault.rise ? -1 : 1)
-    const thick = Math.min(vault.thick, 0.15 * width)
+    const sink = Math.min(vault.most, vault.depth * width) * (vault.rise ? -1 : 1) * (0.12 + 0.88 * ease)
+    const thick = Math.min(vault.thick, 0.15 * width) * (0.3 + 0.7 * ease)
     const row: Vec3[] = []
     const back: Vec3[] = []
     for (let i = 0; i <= ACROSS; i++) {
       const v = i / ACROSS
       const bulge = Math.sin(Math.PI * v)
-      const p = add(lerp3(a, b, v), scale(away, sink * bulge ** (vault.rise ? 0.5 : 0.85)))
+      const p = add(lerp3(a, b, v), scale(away, sink * bulge ** vault.power))
       row.push(p)
       back.push(add(p, scale(away, thick * bulge)))
     }
@@ -252,11 +383,12 @@ function innerPlate(inner: Vec3[], up: number, vault: { depth: number; most: num
     plate.positions.push(...oral[r][i])
     plate.grid.push(along[r], across[r][i], 1.5)
   }
-  // The far face, seen only through the mouth side, carries no grid (its coordinates sit between lines), so the
-  // inside never shows two grids crossing.
+  // The far face, seen only through the mouth side or the gum, carries no grid (its coordinates sit between lines), so
+  // the inside never shows two grids crossing, and keeps the gum's own colour, so it never reads as a dark band through
+  // the gaps between the front teeth.
   for (let r = 0; r < rows; r++) for (let i = 1; i < ACROSS; i++) {
     plate.positions.push(...nasal[r][i])
-    plate.grid.push(CELL / 2, CELL / 2, 6)
+    plate.grid.push(CELL / 2, CELL / 2, 1.5)
   }
   const at = (n: number): Vec3 => [plate.positions[3 * n], plate.positions[3 * n + 1], plate.positions[3 * n + 2]]
   const emitted = new Set<string>()

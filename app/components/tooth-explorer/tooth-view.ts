@@ -21,19 +21,24 @@ import {
 } from 'three'
 import type { Arch } from './arch.ts'
 import { archLayout, gumMesh, shapeKey, toothLandmarks, toothLayers, toothShell, toothSizes, type MeshData, type PlacedTooth, type Vec3 } from './anatomy-model.ts'
-import { FOV, archShown, cameraPosition, clampDistance, clampPitch, decay, easeInOut, easeOut, fitPoints, focusAngles, lerpView, restAngles, wrapYaw, type View } from './tooth-camera.ts'
+import { FOV, JAW_HINGE, cameraPosition, clampDistance, clampPan, clampPitch, clampYaw, crossesBall, decay, easeInOut, easeOut, facing, fitPoints, focusAngles, jawPoint, lerpView, openAngle, restAngles, wrapYaw, type View } from './tooth-camera.ts'
 import { bodyMaterial, layerMaterial, readPalette, sharedUniforms, toothMaterial, type GridMaterial } from './tooth-materials.ts'
 import { mountOverlay, type InsideMode, type LandmarkSpot, type ScreenSpot } from './tooth-overlay.ts'
 import type { ExplorerHost, ModelView } from './tooth-explorer.ts'
 
-/* The 3D chart, loaded only when the explorer nears the viewport. It draws the explorer's state (arch, chosen tooth,
-   keyboard focus) and hands picks back through host.select(), so the panel, the list and the announcements stay the
-   explorer's. The flat SVG chart stays in the page, out of sight, as the keyboard and screen reader layer. Frames are
-   drawn only while something moves. */
+/* The 3D chart, loaded only when the explorer nears the viewport. Both arches show together, biting, and the lower jaw
+   turns a little open on Open. It draws the explorer's state (chosen tooth, keyboard focus, numbering, mouth) and hands
+   picks back through host.select(), so the panel, the list and the announcements stay the explorer's. The flat SVG chart
+   stays in the page, out of sight, as the keyboard and screen reader layer. Frames are drawn only while something
+   moves. */
 
 const DEG = Math.PI / 180
 const FLY_MS = 700
 const HOVER_MS = 150
+/** Opening or closing the mouth. */
+const JAW_MS = 500
+/** The opposing arch fades this fast when a tooth opens, so the tooth never rises through it. */
+const FADE_MS = 250
 const DRAG_SPEED = 0.006
 /** A tap this close to a tooth (CSS px) picks it, so small front teeth are easy to hit with a finger. */
 const NEAR_PX = 22
@@ -101,6 +106,13 @@ const breathe = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
 
 const still = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
 
+/** Where a tooth's number chip sits, in its own frame: on the lip or cheek side of the crown, a little toward the gum, so
+    the upper and lower rows stay apart where the teeth meet. */
+function chipAnchor(fdi: number): Vec3 {
+  const { crownHeight, bl } = toothSizes(fdi)
+  return [0, crownHeight * 0.42, bl * 0.5]
+}
+
 export async function mountToothView(host: ExplorerHost, lost: () => void): Promise<ModelView | null> {
   const { root, chart } = host
   const stage = document.createElement('div')
@@ -152,6 +164,15 @@ export async function mountToothView(host: ExplorerHost, lost: () => void): Prom
   fill.target = aim
   camera.add(aim, key, fill)
 
+  /* The lower teeth and gum ride on the jaw, which turns about the hinge (JAW_HINGE) to open the mouth. */
+  const hinge = new Group()
+  hinge.position.set(...JAW_HINGE)
+  const jaw = new Group()
+  jaw.position.set(-JAW_HINGE[0], -JAW_HINGE[1], -JAW_HINGE[2])
+  hinge.add(jaw)
+  scene.add(hinge)
+  const holder = (arch: Arch) => (arch === 'lower' ? jaw : scene)
+
   const teeth = new Map<number, Tooth>()
   const toothMatrix = new Matrix4()
   for (const placed of layout) {
@@ -164,7 +185,7 @@ export async function mountToothView(host: ExplorerHost, lost: () => void): Prom
     shell.userData.fdi = placed.fdi
     motion.add(shell)
     seat.add(motion)
-    scene.add(seat)
+    holder(placed.arch).add(seat)
     const sizes = toothSizes(placed.fdi)
     teeth.set(placed.fdi, { placed, seat, motion, shell, material, reach: sizes.rootLength + 6.5, extract: new Anim(), hover: new Anim(), spin: new Anim(0, easeOut), sink: new Anim(0, easeOut) })
   }
@@ -172,40 +193,47 @@ export async function mountToothView(host: ExplorerHost, lost: () => void): Prom
     upper: new Mesh(gumGeometry.upper, bodyMaterial(palette, shared)),
     lower: new Mesh(gumGeometry.lower, bodyMaterial(palette, shared)),
   }
-  for (const gum of [gums.upper, gums.lower]) {
-    gum.renderOrder = 2
-    scene.add(gum)
+  for (const arch of ['upper', 'lower'] as const) {
+    gums[arch].renderOrder = 2
+    holder(arch).add(gums[arch])
   }
 
-  /* Points the camera fits: each whole jaw (the crowns, their chips, and the gum and bone around every root, so nothing
-     runs off the canvas), or the open tooth out of its socket. */
+  /* The mouth: closed, or the jaw turned down far enough to part the incisal edges by OPEN_GAP. */
   const world = (placed: PlacedTooth, p: Vec3, lift = 0) => new Vector3(p[0], p[1] + lift, p[2]).applyMatrix4(toothMatrix.fromArray(placed.matrix))
+  const edge = (fdi: number) => world(layout.find((p) => p.fdi === fdi)!, [0, toothSizes(fdi).crownHeight, 0]).toArray() as Vec3
+  const openBy = openAngle(edge(11), edge(41))
+  const mouth = new Anim(host.jaw() === 'open' ? 1 : 0)
+  /** Where a point of an arch at rest is now: the lower jaw's turn carries its points with it. */
+  const jawed = (p: Vec3, arch: Arch): Vec3 => (arch === 'lower' && mouth.value ? jawPoint(p, mouth.value * openBy) : p)
+
+  /* Points the camera fits: both jaws whole (the crowns, their chips, and the gum and bone around every root, so nothing
+     runs off the canvas), or the open tooth out of its socket. */
   const archPoints: Record<Arch, Vec3[]> = { upper: [], lower: [] }
   for (const placed of layout) {
     const { crownHeight: h, rootLength: r, md, bl } = toothSizes(placed.fdi)
-    // The chip past the biting edge counts too, so no number is cut off at the edge.
-    for (const p of [[md / 2, h, 0], [-md / 2, h, 0], [0, h, bl / 2 + 1], [0, h, -bl / 2], [0, -r, 0], placed.chip] as Vec3[]) archPoints[placed.arch].push(world(placed, p).toArray() as Vec3)
+    for (const p of [[md / 2, h, 0], [-md / 2, h, 0], [0, h, bl / 2 + 1], [0, h, -bl / 2], [0, -r, 0], chipAnchor(placed.fdi)] as Vec3[]) archPoints[placed.arch].push(world(placed, p).toArray() as Vec3)
   }
   for (const arch of ['upper', 'lower'] as const) {
     const positions = gumGeometry[arch].getAttribute('position').array
     for (let i = 0; i < positions.length; i += 3 * 17) archPoints[arch].push([positions[i], positions[i + 1], positions[i + 2]])
   }
+  const mouthPoints = () => [...archPoints.upper, ...archPoints.lower.map((p) => jawed(p, 'lower'))]
   const toothPoints = (tooth: Tooth): Vec3[] => {
     const { crownHeight: h, rootLength: r, md, bl } = toothSizes(tooth.placed.fdi)
     const radius = Math.max(md, bl) / 2
     const out: Vec3[] = []
     for (let i = 0; i < 8; i++) {
       const a = (i / 8) * Math.PI * 2
-      for (const y of [h, -r * 0.2, -r]) out.push(world(tooth.placed, [radius * Math.cos(a), y, radius * Math.sin(a)], tooth.reach).toArray() as Vec3)
+      for (const y of [h, -r * 0.2, -r]) out.push(jawed(world(tooth.placed, [radius * Math.cos(a), y, radius * Math.sin(a)], tooth.reach).toArray() as Vec3, tooth.placed.arch))
     }
     return out
   }
 
-  /* Camera state: angles and zoom the visitor controls, aimed at what the camera fits (an arch, or the open tooth). */
-  let shownArch: Arch = host.arch()
+  /* Camera state: angles and zoom the visitor controls, aimed at what the camera fits (the mouth, or the open tooth). The
+     angles stay within their limits (tooth-camera.ts) however they are moved. */
   let open: Tooth | null = null
   let saved: { yaw: number; pitch: number; zoom: number } | null = null
-  let { yaw, pitch } = restAngles(shownArch)
+  let { yaw, pitch } = restAngles()
   let zoom = 1
   let zoomGoal = 1
   const pan = new Vector3()
@@ -217,18 +245,22 @@ export async function mountToothView(host: ExplorerHost, lost: () => void): Prom
   let currentView: View = { target: [0, 0, 0], distance: 200, yaw, pitch }
   let fitDistance = 200
   const dim = new Anim()
+  /** Each arch fades out while a tooth of the other is open, so nothing stands in the way of it. */
+  const away: Record<Arch, Anim> = { upper: new Anim(), lower: new Anim() }
 
-  const subject = () => (open ? toothPoints(open) : archPoints[shownArch])
+  const subject = () => (open ? toothPoints(open) : mouthPoints())
   const liveView = (): View => {
     // The controls sit outside the canvas, so a small margin is enough.
     const fit = fitPoints(subject(), yaw, pitch, aspect, open ? 0.1 : 0.04)
     fitDistance = fit.distance
+    // The aim may slide toward the pointer, but the subject's centre stays in the frame.
+    panGoal.fromArray(clampPan(panGoal.toArray(), yaw, pitch, fit.distance * zoomGoal, aspect))
+    pan.fromArray(clampPan(pan.toArray(), yaw, pitch, fit.distance * zoom, aspect))
     return { target: [fit.target[0] + pan.x, fit.target[1] + pan.y, fit.target[2] + pan.z], distance: fit.distance * zoom, yaw, pitch }
   }
   const startFly = (now: number) => {
     fly = still() ? null : { from: currentView, start: now }
   }
-  const archOfPitch = () => currentView.pitch
 
   /* Overlay and the moves its controls ask for. */
   const project = (p: Vector3): ScreenSpot | null => {
@@ -240,6 +272,27 @@ export async function mountToothView(host: ExplorerHost, lost: () => void): Prom
   const facingCamera = (object: Object3D, point: Vector3, normal: Vec3, slack = 0.15) => {
     const n = new Vector3(...normal).transformDirection(object.matrixWorld)
     return n.dot(camera.position.clone().sub(point).normalize()) > -slack
+  }
+  /* Each crown, roughly, as an ellipsoid: the matrix that takes a world point into the frame where it is the unit ball,
+     refreshed after each frame is drawn. A chip hides when another crown stands between it and the eye. */
+  const crowns = new Map<Tooth, Matrix4>()
+  const refreshCrowns = () => {
+    for (const tooth of teeth.values()) {
+      const { crownHeight: h, md, bl } = toothSizes(tooth.placed.fdi)
+      const m = crowns.get(tooth) ?? new Matrix4()
+      crowns.set(tooth, m.makeScale(md * 0.48, h * 0.5, bl * 0.48).setPosition(0, h * 0.5, 0).premultiply(tooth.motion.matrixWorld).invert())
+    }
+  }
+  const inSight = (tooth: Tooth, p: Vector3) => {
+    const normal = new Vector3(0, 0.3, 1).transformDirection(tooth.motion.matrixWorld)
+    if (!facing(normal.toArray() as Vec3, p.toArray() as Vec3, camera.position.toArray() as Vec3)) return false
+    const eye = new Vector3()
+    const at = new Vector3()
+    for (const [other, toUnit] of crowns) {
+      if (other === tooth || !other.seat.visible) continue
+      if (crossesBall(eye.copy(camera.position).applyMatrix4(toUnit).toArray() as Vec3, at.copy(p).applyMatrix4(toUnit).toArray() as Vec3)) return false
+    }
+    return true
   }
   let inside: InsideMode = 'surface'
   let lines: LineSegments | null = null
@@ -294,16 +347,26 @@ export async function mountToothView(host: ExplorerHost, lost: () => void): Prom
     open.motion.add(lines)
   }
 
+  /** Turns the open tooth about its long axis by a drag's turn, so the side under the pointer follows it. */
+  const spinOpen = (turn: number, now: number) => {
+    if (!open) return
+    const axis = new Vector3(0, 1, 0).transformDirection(open.seat.matrixWorld)
+    const up = new Vector3(0, 1, 0).applyQuaternion(camera.quaternion)
+    // A mirrored tooth (the other side's shape, flipped) turns the other way about its own axis.
+    const sign = (axis.dot(up) < 0 ? -1 : 1) * (open.placed.mirrored ? -1 : 1)
+    open.spin.set(open.spin.value - turn * sign, 0, now)
+  }
+
   let highlighted: number | null = null
   const overlay = mountOverlay(host, chart, {
     chip(fdi) {
       const tooth = teeth.get(fdi)
-      if (!tooth || !archShown(tooth.placed.arch, archOfPitch()) || !tooth.seat.visible) return null
+      if (!tooth || !tooth.seat.visible) return null
       // In the close-up the chip sits beside the crown, clear of the tools above it.
       const sizes = toothSizes(fdi)
-      const anchor: Vec3 = tooth === open ? [sizes.md / 2 + 2.6, sizes.crownHeight * 0.55, 0] : tooth.placed.chip
+      const anchor: Vec3 = tooth === open ? [sizes.md / 2 + 2.6, sizes.crownHeight * 0.55, 0] : chipAnchor(fdi)
       const p = new Vector3(...anchor).applyMatrix4(tooth.motion.matrixWorld)
-      if (tooth !== open && !facingCamera(tooth.motion, p, [0, 1, 0.7], 0.2)) return null
+      if (tooth !== open && !inSight(tooth, p)) return null
       return project(p)
     },
     landmarks() {
@@ -324,7 +387,10 @@ export async function mountToothView(host: ExplorerHost, lost: () => void): Prom
     focus(fdi, back) {
       const now = performance.now()
       const quick = still()
+      const leaving = open
       if (open) {
+        // Home the shortest way round, however far it was spun.
+        open.spin.set(wrapYaw(open.spin.value), 0, now)
         open.extract.set(0, quick ? 0 : FLY_MS, now)
         open.spin.set(0, quick ? 0 : FLY_MS, now)
         showInside(open, 'surface')
@@ -334,20 +400,25 @@ export async function mountToothView(host: ExplorerHost, lost: () => void): Prom
       const next = fdi === null ? null : (teeth.get(fdi) ?? null)
       if (next && !open) saved = { yaw, pitch, zoom: zoomGoal }
       open = next
+      // The other arch fades out before the tooth rises through it, and comes back once a tooth that rose through it
+      // has nearly settled.
+      for (const arch of ['upper', 'lower'] as const) {
+        const hide = !!next && next.placed.arch !== arch
+        const settle = !hide && leaving && leaving.placed.arch !== arch ? FLY_MS * 0.85 : 0
+        away[arch].set(hide ? 1 : 0, quick ? 0 : FADE_MS, now, quick ? 0 : settle)
+      }
       if (next) {
-        shownArch = next.placed.arch
-        next.extract.set(1, quick ? 0 : FLY_MS, now)
-        if (!quick) next.spin.set(SPIN, 1500, now, FLY_MS * 0.6)
-        const facial = new Vector3(0, 0, 1).transformDirection(next.seat.matrix)
+        const wait = quick || away[next.placed.arch === 'upper' ? 'lower' : 'upper'].value >= 1 ? 0 : FADE_MS * 0.8
+        next.extract.set(1, quick ? 0 : FLY_MS, now, wait)
+        if (!quick) next.spin.set(SPIN, 1500, now, wait + FLY_MS * 0.6)
+        const facial = new Vector3(0, 0, 1).transformDirection(next.seat.matrixWorld)
         ;({ yaw, pitch } = focusAngles([facial.x, facial.y, facial.z], next.placed.arch))
         dim.set(1, quick ? 0 : 400, now)
       } else {
-        shownArch = host.arch()
-        const rest = restAngles(shownArch)
-        const back2 = back === 'previous' && saved ? saved : { ...rest, zoom: 1 }
-        yaw = back2.yaw
-        pitch = clampPitch(back2.pitch, shownArch)
-        zoomGoal = back2.zoom
+        const to = back === 'previous' && saved ? saved : { ...restAngles(), zoom: 1 }
+        yaw = clampYaw(to.yaw)
+        pitch = clampPitch(to.pitch)
+        zoomGoal = to.zoom
         saved = null
         dim.set(0, quick ? 0 : 400, now)
       }
@@ -368,10 +439,9 @@ export async function mountToothView(host: ExplorerHost, lost: () => void): Prom
       invalidate()
     },
     zoom(factor) {
-      zoomGoal = clampDistance(fitDistance * zoomGoal * factor, fitDistance) / fitDistance
-      if (zoomGoal >= 0.999) panGoal.set(0, 0, 0)
-      if (still()) zoom = zoomGoal
-      invalidate()
+      // The buttons zoom about the middle of the canvas, the same way as the wheel.
+      const box = canvas.getBoundingClientRect()
+      zoomBy(factor, { clientX: box.left + box.width / 2, clientY: box.top + box.height / 2 })
     },
     highlight(fdi) {
       highlighted = fdi
@@ -387,15 +457,34 @@ export async function mountToothView(host: ExplorerHost, lost: () => void): Prom
     if (!frame && !disposed) frame = requestAnimationFrame(draw)
   }
 
+  /** A fading tooth turns see-through for the fade, and solid again once it is back. */
+  const fadeTooth = (material: GridMaterial, fade: number) => {
+    const fading = fade > 0
+    if (material.transparent !== fading) {
+      material.transparent = fading
+      material.depthWrite = !fading
+      material.needsUpdate = true
+    }
+    material.opacity = 1 - fade
+  }
+
   function draw(now: number) {
     frame = 0
     const dt = Math.min(now - last, 50)
     last = now
     let moving = false
-    // Inertia after a drag, then the eased zoom and the aim sliding toward the pointer.
-    if (spinYaw || spinPitch) {
-      yaw = wrapYaw(yaw + spinYaw * dt)
-      pitch = clampPitch(pitch + spinPitch * dt, shownArch)
+    // Inertia once a drag lets go (it stops dead at a limit), then the eased zoom and the aim sliding toward the pointer.
+    // In the close-up a sideways turn spins the open tooth instead of the camera.
+    if (!drag && (spinYaw || spinPitch)) {
+      if (open) spinOpen(spinYaw * dt, now)
+      else {
+        const turned = yaw + spinYaw * dt
+        yaw = clampYaw(turned)
+        if (yaw !== turned) spinYaw = 0
+      }
+      const tilted = pitch + spinPitch * dt
+      pitch = clampPitch(tilted, open !== null)
+      if (pitch !== tilted) spinPitch = 0
       spinYaw = decay(spinYaw, dt)
       spinPitch = decay(spinPitch, dt)
       moving = true
@@ -418,8 +507,12 @@ export async function mountToothView(host: ExplorerHost, lost: () => void): Prom
       moving = tooth.sink.step(now) || moving
     }
     moving = dim.step(now) || moving
+    moving = away.upper.step(now) || moving
+    moving = away.lower.step(now) || moving
+    moving = mouth.step(now) || moving
     moving = grid.step(now) || moving
     shared.uGrid.value = grid.value
+    hinge.rotation.x = mouth.value * openBy
     // Where the camera is: the live view, or on the way to it.
     const live = liveView()
     if (fly) {
@@ -433,8 +526,9 @@ export async function mountToothView(host: ExplorerHost, lost: () => void): Prom
     camera.updateMatrixWorld()
     const chosen = host.selected()
     for (const tooth of teeth.values()) {
-      const shown = archShown(tooth.placed.arch, currentView.pitch) || tooth === open
-      tooth.seat.visible = shown
+      const fade = tooth === open ? 0 : away[tooth.placed.arch].value
+      tooth.seat.visible = fade < 1
+      fadeTooth(tooth.material, fade)
       tooth.motion.position.y = tooth.extract.value * tooth.reach + tooth.hover.value - tooth.sink.value
       tooth.motion.rotation.y = tooth.spin.value
       const grid = tooth.material.userData.grid
@@ -443,10 +537,12 @@ export async function mountToothView(host: ExplorerHost, lost: () => void): Prom
       grid.uDim.value = tooth === open ? 0 : 0.7 * dim.value
     }
     for (const arch of ['upper', 'lower'] as const) {
-      gums[arch].visible = archShown(arch, currentView.pitch)
-      gums[arch].material.opacity = 0.4 - 0.3 * dim.value
+      const fade = away[arch].value
+      gums[arch].visible = fade < 1
+      gums[arch].material.opacity = (0.4 - 0.3 * dim.value) * (1 - fade)
     }
     renderer.render(scene, camera)
+    refreshCrowns()
     overlay.place()
     captions?.toggleAttribute('data-turned', Math.abs(wrapYaw(currentView.yaw)) > 60 * DEG)
     if (moving) invalidate()
@@ -475,16 +571,9 @@ export async function mountToothView(host: ExplorerHost, lost: () => void): Prom
   )
   if (playIntro) seen.observe(stage)
 
+  // Closed and Open turn the jaw; the view refits as it goes, so nothing runs off the canvas.
   const stopListening = host.onChange((change) => {
-    if (change === 'arch' && host.arch() !== shownArch && !open) {
-      shownArch = host.arch()
-      ;({ yaw, pitch } = restAngles(shownArch))
-      zoom = zoomGoal = 1
-      pan.set(0, 0, 0)
-      panGoal.set(0, 0, 0)
-      spinYaw = spinPitch = 0
-      startFly(performance.now())
-    }
+    if (change === 'jaw') mouth.set(host.jaw() === 'open' ? 1 : 0, still() ? 0 : JAW_MS, performance.now())
     invalidate()
   })
 
@@ -521,15 +610,26 @@ export async function mountToothView(host: ExplorerHost, lost: () => void): Prom
   }
   const findFdi = (object: Object3D) => [...teeth.values()].find((t) => t.motion === object.parent)?.placed.fdi ?? null
 
-  /** The point under the pointer to zoom about: on the model if it is there, else on the plane through the aim. */
+  /** The point to zoom about: on the model under the pointer if it is there, else the middle of the crown nearest it on
+      screen, so zooming in always closes on a tooth and never on the empty middle of the mouth. */
   const zoomPoint = (event: { clientX: number; clientY: number }): Vector3 | null => {
-    if (!castFrom(event)) return null
-    const hit = raycaster.intersectObjects([...pickable(), gums[shownArch]], false)[0]
+    const at = castFrom(event)
+    if (!at) return null
+    const hit = raycaster.intersectObjects([...pickable(), gums.upper, gums.lower].filter((m) => m.visible), false)[0]
     if (hit) return hit.point
-    const target = new Vector3(...currentView.target)
-    const normal = camera.getWorldDirection(new Vector3())
-    const t = target.clone().sub(raycaster.ray.origin).dot(normal) / raycaster.ray.direction.dot(normal)
-    return t > 0 ? raycaster.ray.at(t, new Vector3()) : null
+    let best: Vector3 | null = null
+    let bestGap = Infinity
+    for (const tooth of teeth.values()) {
+      if (!tooth.seat.visible || (open && tooth !== open)) continue
+      const p = new Vector3(0, toothSizes(tooth.placed.fdi).crownHeight / 2, 0).applyMatrix4(tooth.motion.matrixWorld)
+      const spot = project(p)
+      const gap = spot ? Math.hypot(spot.x - at.x, spot.y - at.y) : Infinity
+      if (gap < bestGap) {
+        bestGap = gap
+        best = p
+      }
+    }
+    return best
   }
   const zoomBy = (factor: number, event?: { clientX: number; clientY: number }) => {
     const before = currentView.distance
@@ -538,7 +638,7 @@ export async function mountToothView(host: ExplorerHost, lost: () => void): Prom
     if (point) {
       const shift = 1 - goal / before
       panGoal.add(point.sub(new Vector3(...currentView.target)).multiplyScalar(shift))
-      panGoal.clampLength(0, open ? 18 : 32)
+      panGoal.fromArray(clampPan(panGoal.toArray(), yaw, pitch, goal, aspect))
     }
     zoomGoal = goal / fitDistance
     if (zoomGoal >= 0.999) panGoal.set(0, 0, 0)
@@ -549,10 +649,12 @@ export async function mountToothView(host: ExplorerHost, lost: () => void): Prom
     invalidate()
   }
 
-  /* Dragging turns the model; touch turns it sideways only and leaves vertical swipes to the page. Two fingers pinch. */
+  /* Dragging turns the model, within its limits; touch turns it sideways only and leaves vertical swipes to the page. Two
+     fingers pinch, and tilt as they move up or down together. In the close-up a sideways drag spins the open tooth about
+     its long axis instead, as far as you like. */
   const pointers = new Map<number, { x: number; y: number }>()
   let drag: { id: number; x: number; y: number; moved: boolean; touch: boolean; t: number } | null = null
-  let pinch: { distance: number; zoom: number } | null = null
+  let pinch: { distance: number; zoom: number; y: number } | null = null
   let skipClick = false
 
   const onPointerDown = (event: PointerEvent) => {
@@ -560,8 +662,9 @@ export async function mountToothView(host: ExplorerHost, lost: () => void): Prom
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
     if (pointers.size === 2) {
       const [a, b] = [...pointers.values()]
-      pinch = { distance: Math.hypot(a.x - b.x, a.y - b.y), zoom: zoomGoal }
+      pinch = { distance: Math.hypot(a.x - b.x, a.y - b.y), zoom: zoomGoal, y: (a.y + b.y) / 2 }
       drag = null
+      spinYaw = spinPitch = 0
       return
     }
     skipClick = false
@@ -573,11 +676,16 @@ export async function mountToothView(host: ExplorerHost, lost: () => void): Prom
     if (pointers.has(event.pointerId)) pointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
     if (pinch && pointers.size === 2) {
       const [a, b] = [...pointers.values()]
+      const middle = (a.y + b.y) / 2
+      pitch = clampPitch(pitch + (middle - pinch.y) * DRAG_SPEED, open !== null)
+      pinch.y = middle
       const factor = pinch.distance / Math.max(Math.hypot(a.x - b.x, a.y - b.y), 1)
-      zoomBy((pinch.zoom * factor) / zoomGoal, { clientX: (a.x + b.x) / 2, clientY: (a.y + b.y) / 2 })
+      zoomBy((pinch.zoom * factor) / zoomGoal, { clientX: (a.x + b.x) / 2, clientY: middle })
       skipClick = true
       return
     }
+    // A mouse whose button came up out of sight (another window took it) ends the drag.
+    if (drag && !drag.touch && event.pointerId === drag.id && !event.buttons) return onPointerUp(event)
     if (drag && event.pointerId === drag.id) {
       const dx = event.clientX - drag.x
       const dy = event.clientY - drag.y
@@ -593,8 +701,9 @@ export async function mountToothView(host: ExplorerHost, lost: () => void): Prom
       const elapsed = Math.max(now - drag.t, 1)
       const turn = -dx * DRAG_SPEED
       const tilt = drag.touch ? 0 : dy * DRAG_SPEED
-      yaw = wrapYaw(yaw + turn)
-      pitch = clampPitch(pitch + tilt, shownArch)
+      if (open) spinOpen(turn, now)
+      else yaw = clampYaw(yaw + turn)
+      pitch = clampPitch(pitch + tilt, open !== null)
       // Speed for inertia, smoothed over the last few moves.
       spinYaw = 0.6 * (turn / elapsed) + 0.4 * spinYaw
       spinPitch = 0.6 * (tilt / elapsed) + 0.4 * spinPitch
@@ -692,6 +801,7 @@ export async function mountToothView(host: ExplorerHost, lost: () => void): Prom
   }
 
   chart.prepend(stage)
+  hinge.rotation.x = mouth.value * openBy
   currentView = liveView()
   invalidate()
   return { dispose }

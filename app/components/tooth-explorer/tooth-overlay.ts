@@ -273,8 +273,6 @@ export function mountOverlay(host: ExplorerHost, chart: HTMLElement, driver: Vie
 
   const stopListening = host.onChange((change) => {
     if (change === 'numbering') label()
-    // Upper teeth or Lower teeth closes the close-up of a tooth on the other arch.
-    if (change === 'arch' && open !== null && (Math.floor(open / 10) <= 2 ? 'upper' : 'lower') !== host.arch()) leave('rest')
     if (change === 'select') {
       const fdi = host.selected()
       if (fdi !== null) enter(fdi)

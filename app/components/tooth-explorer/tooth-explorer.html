@@ -5,9 +5,14 @@
     <!-- The numbering switch starts on FDI, the chart's own numbers; the script restores a saved choice. -->
     <div class="grid justify-items-center gap-2" data-js-only>
       <div class="flex flex-wrap justify-center gap-3">
-        <div class="hidden rounded-control border border-line-strong p-[3px] max-sm:inline-flex group-data-[view=3d]/explorer:inline-flex" role="group" aria-label="Show" data-arch-toggle data-js-only>
+        <!-- Upper and Lower switch the flat chart on phones; the 3D model shows both arches and offers Closed and Open instead. -->
+        <div class="hidden rounded-control border border-line-strong p-[3px] max-sm:inline-flex group-data-[view=3d]/explorer:hidden" role="group" aria-label="Show" data-arch-toggle data-js-only>
           <button type="button" class="min-h-11 rounded-[9px] px-4 text-sm font-semibold aria-pressed:bg-spruce aria-pressed:text-on-spruce" data-arch="upper" aria-pressed="true">Upper teeth</button>
           <button type="button" class="min-h-11 rounded-[9px] px-4 text-sm font-semibold aria-pressed:bg-spruce aria-pressed:text-on-spruce" data-arch="lower" aria-pressed="false">Lower teeth</button>
+        </div>
+        <div class="hidden rounded-control border border-line-strong p-[3px] group-data-[view=3d]/explorer:inline-flex" role="group" aria-label="Mouth" data-jaw-toggle data-js-only>
+          <button type="button" class="min-h-11 rounded-[9px] px-4 text-sm font-semibold aria-pressed:bg-spruce aria-pressed:text-on-spruce" data-jaw="closed" aria-pressed="true">Closed</button>
+          <button type="button" class="min-h-11 rounded-[9px] px-4 text-sm font-semibold aria-pressed:bg-spruce aria-pressed:text-on-spruce" data-jaw="open" aria-pressed="false">Open</button>
         </div>
         <div class="inline-flex rounded-control border border-line-strong p-[3px]" role="group" aria-label="Tooth numbering" aria-describedby="numbering-note" data-numbering data-js-only>
           <button type="button" class="min-h-11 rounded-[9px] px-4 text-sm font-semibold aria-pressed:bg-spruce aria-pressed:text-on-spruce" data-system="fdi" aria-label="FDI" aria-pressed="true">FDI</button>

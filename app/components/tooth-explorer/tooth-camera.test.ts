@@ -1,36 +1,75 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { Vec3 } from './anatomy-model.ts'
-import { FOV, MAX_ZOOM_OUT, MIN_DISTANCE, PITCH_RANGE, REST_PITCH, archShown, axes, cameraPosition, clampDistance, clampPitch, decay, fitPoints, focusAngles, lerpView, restAngles, wrapYaw, zoomAbout, type View } from './tooth-camera.ts'
+import {
+  FOCUS_PITCH_RANGE,
+  FOV,
+  JAW_HINGE,
+  MAX_ZOOM_OUT,
+  MIN_DISTANCE,
+  OPEN_GAP,
+  PITCH_RANGE,
+  REST_PITCH,
+  YAW_LIMIT,
+  axes,
+  cameraPosition,
+  clampDistance,
+  clampPan,
+  clampPitch,
+  clampYaw,
+  decay,
+  fitPoints,
+  focusAngles,
+  crossesBall,
+  facing,
+  jawPoint,
+  lerpView,
+  openAngle,
+  restAngles,
+  wrapYaw,
+  zoomAbout,
+  type View,
+} from './tooth-camera.ts'
 
 const DEG = Math.PI / 180
 const near = (a: number, b: number, eps = 1e-9) => Math.abs(a - b) <= eps
 
-test('at rest the camera faces the front teeth, about a third of the way above the lower arch and below the upper one', () => {
-  assert.ok(REST_PITCH >= 30 * DEG && REST_PITCH <= 35 * DEG)
-  assert.deepEqual(restAngles('lower'), { yaw: 0, pitch: REST_PITCH })
-  assert.deepEqual(restAngles('upper'), { yaw: 0, pitch: -REST_PITCH })
+test('at rest the camera faces the bite head on, from a little above', () => {
+  assert.ok(REST_PITCH >= 5 * DEG && REST_PITCH <= 15 * DEG)
+  assert.deepEqual(restAngles(), { yaw: 0, pitch: REST_PITCH })
   // Yaw 0 puts the camera in front (+z) with x to its right: the patient's right, at negative x, is on the viewer's left.
   const { right, forward } = axes(0, 20 * DEG)
   assert.ok(near(right[0], 1) && forward[2] < 0)
   assert.ok(FOV >= 30 && FOV <= 35)
 })
 
-test('pitch stays on the arch’s own side of the biting plane; yaw turns all the way round', () => {
-  const [low, high] = PITCH_RANGE
-  assert.equal(clampPitch(-30 * DEG, 'lower'), low, 'never below the lower arch')
-  assert.equal(clampPitch(89 * DEG, 'lower'), high)
-  assert.equal(clampPitch(30 * DEG, 'upper'), -low, 'never above the upper arch')
-  assert.equal(clampPitch(-89 * DEG, 'upper'), -high)
-  assert.equal(clampPitch(35 * DEG, 'lower'), 35 * DEG)
+test('turning stops at the side of the arch and no longer wraps round', () => {
+  assert.ok(YAW_LIMIT >= 75 * DEG && YAW_LIMIT <= 85 * DEG)
+  assert.equal(clampYaw(0.3), 0.3)
+  assert.equal(clampYaw(120 * DEG), YAW_LIMIT)
+  assert.equal(clampYaw(-200 * DEG), -YAW_LIMIT)
+  assert.equal(clampYaw(2 * Math.PI + 0.3), YAW_LIMIT, 'a full turn is not a small one')
+  // At the limit the camera is still on the cheek side, in front of the back teeth (z > 0 relative to the aim).
+  const eye = cameraPosition({ target: [0, 0, 0], distance: 100, yaw: YAW_LIMIT, pitch: 0 })
+  assert.ok(eye[0] > 90 && eye[2] > 0)
   assert.ok(near(wrapYaw(2 * Math.PI + 0.3), 0.3) && near(wrapYaw(-Math.PI - 0.2), Math.PI - 0.2))
-  // Within the pitch range only one arch shows; both show only on the way between them, near the biting plane.
-  assert.ok(archShown('lower', low) && !archShown('upper', low))
-  assert.ok(archShown('upper', -low) && !archShown('lower', -low))
-  assert.ok(archShown('upper', 0) && archShown('lower', 0))
 })
 
-test('zoom stays between one molar’s cusps and a little past the whole arch', () => {
+test('tilt stays between a look from below and a look from above, a little wider in the close-up', () => {
+  const [low, high] = PITCH_RANGE
+  assert.ok(low >= -35 * DEG && low <= -25 * DEG, 'from below, for the upper biting surfaces')
+  assert.ok(high >= 40 * DEG && high <= 50 * DEG, 'from above, for the lower ones')
+  assert.equal(clampPitch(-89 * DEG), low)
+  assert.equal(clampPitch(89 * DEG), high)
+  assert.equal(clampPitch(20 * DEG), 20 * DEG)
+  const [focusLow, focusHigh] = FOCUS_PITCH_RANGE
+  assert.ok(focusLow <= low && focusHigh >= high && focusLow > -90 * DEG && focusHigh < 90 * DEG)
+  assert.equal(clampPitch(-89 * DEG, true), focusLow)
+  assert.equal(clampPitch(89 * DEG, true), focusHigh)
+  assert.equal(clampPitch(50 * DEG, true), 50 * DEG)
+})
+
+test('zoom stays between one molar’s cusps and a little past the whole mouth', () => {
   assert.equal(clampDistance(2, 200), MIN_DISTANCE)
   assert.equal(clampDistance(1000, 200), 200 * MAX_ZOOM_OUT)
   assert.equal(clampDistance(120, 200), 120)
@@ -42,9 +81,33 @@ test('zoom stays between one molar’s cusps and a little past the whole arch', 
   assert.deepEqual(closer.target, [5, 0, 0])
 })
 
+test('the aim may slide toward the pointer, but never so far that the subject’s centre leaves the frame', () => {
+  const tan = Math.tan((FOV / 2) * DEG)
+  for (const [yaw, pitch, distance, aspect] of [[0, 10 * DEG, 20, 1.25], [1.2, -0.4, 60, 1.25], [-1.3, 0.7, 16, 0.8]]) {
+    const { forward, right, up } = axes(yaw, pitch)
+    // A wild pan: far off to the side, up, and toward the camera.
+    const wild: Vec3 = [0, 1, 2].map((k) => right[k] * 300 + up[k] * -200 + forward[k] * -10) as Vec3
+    const pan = clampPan(wild, yaw, pitch, distance, aspect)
+    // The centre sits at aim - pan; seen from the eye it must project inside the frame.
+    const target: Vec3 = [5, -2, 8]
+    const centre: Vec3 = [target[0] - pan[0], target[1] - pan[1], target[2] - pan[2]]
+    const eye = cameraPosition({ target, distance, yaw, pitch })
+    const o: Vec3 = [centre[0] - eye[0], centre[1] - eye[1], centre[2] - eye[2]]
+    const z = o[0] * forward[0] + o[1] * forward[1] + o[2] * forward[2]
+    const x = (o[0] * right[0] + o[1] * right[1] + o[2] * right[2]) / z
+    const y = (o[0] * up[0] + o[1] * up[1] + o[2] * up[2]) / z
+    assert.ok(z > 0 && Math.abs(x) <= tan * aspect + 1e-9 && Math.abs(y) <= tan + 1e-9, `centre in frame at yaw ${yaw}`)
+    // The part along the line of sight is kept.
+    assert.ok(near(pan[0] * forward[0] + pan[1] * forward[1] + pan[2] * forward[2], -10, 1e-9))
+  }
+  // A small pan is left alone.
+  const small: Vec3 = [1, 0.5, -0.5]
+  assert.deepEqual(clampPan(small, 0, 0, 100, 1.25).map((v) => Math.round(v * 1e9) / 1e9), small)
+})
+
 test('a fitted view keeps every point inside the frame', () => {
   const points: Vec3[] = [[-30, 0, 0], [30, 0, 0], [0, 10, -40], [0, -20, 5], [25, 8, -30]]
-  for (const [yaw, pitch, aspect] of [[0, 20 * DEG, 1.25], [1.2, 40 * DEG, 1], [-2.5, 12 * DEG, 0.8]]) {
+  for (const [yaw, pitch, aspect] of [[0, 20 * DEG, 1.25], [1.2, 40 * DEG, 1], [-1.3, -25 * DEG, 0.8]]) {
     const fit = fitPoints(points, yaw, pitch, aspect, 0.1)
     const { forward, right, up } = axes(yaw, pitch)
     const eye = cameraPosition({ ...fit, yaw, pitch })
@@ -59,23 +122,55 @@ test('a fitted view keeps every point inside the frame', () => {
   }
 })
 
-test('flying to a tooth faces its lip or cheek side, nearly level, and frames it', () => {
+test('flying to a tooth faces its lip or cheek side, nearly level, never past the side of the arch, and frames it', () => {
   // A lower left molar's cheek side faces the patient's left: the camera swings round to look at it from there.
   const molar = focusAngles([0.97, 0, 0.24], 'lower')
-  assert.ok(molar.yaw > 60 * DEG && molar.yaw < 90 * DEG)
-  assert.ok(molar.pitch > 0 && molar.pitch <= PITCH_RANGE[0] + 6 * DEG, 'just above, on the lower arch’s side')
+  assert.ok(molar.yaw > 60 * DEG && molar.yaw <= YAW_LIMIT)
+  assert.ok(molar.pitch > 0 && molar.pitch <= 15 * DEG, 'just above, on the lower arch’s side')
   const incisor = focusAngles([0, 0, 1], 'upper')
   assert.ok(near(incisor.yaw, 0) && incisor.pitch < 0)
+  // A wisdom tooth facing a little backward still gets the side view at the limit, not one from behind.
+  assert.equal(focusAngles([-1, 0, -0.2], 'upper').yaw, -YAW_LIMIT)
   // The tooth's frame (its points out of the socket) becomes the aim: the fit centres on it.
   const tooth: Vec3[] = [[20, 5, -20], [24, 5, -20], [22, 30, -18], [22, 30, -22]]
   const fit = fitPoints(tooth, molar.yaw, molar.pitch, 1.25)
   assert.ok(Math.hypot(fit.target[0] - 22, fit.target[2] + 20) < 3 && fit.target[1] > 5 && fit.target[1] < 30)
-  // The flight takes the short way round and eases the distance.
-  const from: View = { target: [0, 0, 0], distance: 200, yaw: 170 * DEG, pitch: 0.3 }
-  const to: View = { target: [10, 0, 0], distance: 50, yaw: -170 * DEG, pitch: 0.2 }
+  // The flight eases the distance and moves the aim along.
+  const from: View = { target: [0, 0, 0], distance: 200, yaw: -70 * DEG, pitch: 0.3 }
+  const to: View = { target: [10, 0, 0], distance: 50, yaw: 70 * DEG, pitch: 0.2 }
   const middle = lerpView(from, to, 0.5)
-  assert.ok(near(Math.abs(wrapYaw(middle.yaw)), Math.PI, 1e-6), 'through 180°, not through 0°')
+  assert.ok(near(middle.yaw, 0, 1e-9), 'through the front, within the limits')
   assert.ok(near(middle.distance, 100, 1e-6) && near(middle.target[0], 5))
+})
+
+test('opening turns the lower jaw down about the hinge, by enough to part the incisal edges', () => {
+  // The hinge sits behind and above the back teeth.
+  assert.ok(JAW_HINGE[1] > 5 && JAW_HINGE[2] < -50)
+  const upper: Vec3 = [-4, -1, 2.8]
+  const lower: Vec3 = [-2.5, 1, 0.4]
+  const angle = openAngle(upper, lower)
+  assert.ok(angle > 5 * DEG && angle < 20 * DEG, `about ${(angle / DEG).toFixed(1)}°`)
+  const moved = jawPoint(lower, angle)
+  assert.ok(near(upper[1] - moved[1], OPEN_GAP, 1e-9), 'the edges part by the gap')
+  assert.ok(moved[2] < lower[2] && moved[0] === lower[0], 'and the lower edge swings a little back, along the hinge')
+  // A point on the hinge line stays put; closed is no turn at all.
+  assert.deepEqual(jawPoint([7, JAW_HINGE[1], JAW_HINGE[2]], angle), [7, JAW_HINGE[1], JAW_HINGE[2]])
+  assert.ok(jawPoint(lower, 0).every((v, k) => near(v, lower[k], 1e-9)))
+})
+
+test('a chip shows only where its tooth faces the eye and no other crown is in the way', () => {
+  const eye: Vec3 = [0, 0, 100]
+  // Facing the camera; side-on still counts; facing away (the tongue side, or the far side of the arch) doesn't.
+  assert.ok(facing([0, 0, 1], [0, 0, 0], eye))
+  assert.ok(facing([1, 0, 0], [0, 0, 0], eye))
+  assert.ok(!facing([0, 0, -1], [0, 0, 0], eye))
+  assert.ok(!facing([1, 0, 0], [30, 0, -30], [-100, 0, 20]), 'the far molars from a camera turned to the other side')
+  // A crown between the eye and the point hides it; one beside the line of sight, or behind the point, doesn't.
+  assert.ok(crossesBall(eye, [0, 0, 0], { centre: [0, 0.5, 20], radius: 3 }))
+  assert.ok(!crossesBall(eye, [0, 0, 0], { centre: [6, 0, 20], radius: 3 }))
+  assert.ok(!crossesBall(eye, [0, 0, 0], { centre: [0, 0, -10], radius: 3 }))
+  // The unit ball by default: the view moves both points into each crown's own frame first.
+  assert.ok(crossesBall([-5, 0.5, 0], [5, 0.5, 0]) && !crossesBall([-5, 1.5, 0], [5, 1.5, 0]))
 })
 
 test('inertia fades and stops', () => {

@@ -137,10 +137,10 @@ test('every shell and inside layer is closed and faces outward, within the trian
   for (const fdi of ALL) {
     const shell = toothShell(fdi)
     const triangles = shell.indices.length / 3
-    assert.ok(triangles >= 3000 && triangles <= 6000, `${fdi}: ${triangles} triangles`)
+    assert.ok(triangles >= 4000 && triangles <= 9000, `${fdi}: ${triangles} triangles`)
     scene += triangles
   }
-  assert.ok(scene < 250_000, `the scene has ${scene} triangles`)
+  assert.ok(scene < 300_000, `the scene has ${scene} triangles`)
   for (const fdi of KINDS) {
     assertClosed(toothShell(fdi), `${fdi} shell`)
     const layers = toothLayers(fdi)
@@ -201,6 +201,39 @@ test('crowns and roots match the textbook sizes within 10%', () => {
     near(Math.max(...crownX) - Math.min(...crownX), md, 'mesiodistal width')
     near(Math.max(...crownZ) - Math.min(...crownZ), bl, 'cheek-to-tongue width')
   }
+})
+
+/* Textbook root length over crown height (Wheeler-style averages): about 1.2 on upper central incisors, up to nearly 1.9
+   on lower first molars. */
+const RATIO: Record<string, number> = { upper1: 1.24, upper2: 1.44, upper3: 1.7, upper4: 1.65, upper5: 1.65, upper6: 1.71, upper7: 1.71, upper8: 1.69, lower1: 1.39, lower2: 1.47, lower3: 1.45, lower4: 1.65, lower5: 1.81, lower6: 1.87, lower7: 1.86, lower8: 1.57 }
+
+test('each kind of tooth has its textbook crown-to-root proportion', () => {
+  for (const fdi of KINDS) {
+    const m = toothShell(fdi)
+    let top = -Infinity
+    let bottom = Infinity
+    for (let i = 1; i < m.positions.length; i += 3) {
+      top = Math.max(top, m.positions[i])
+      bottom = Math.min(bottom, m.positions[i])
+    }
+    const ratio = -bottom / top
+    const want = RATIO[kindOf(fdi)]
+    assert.ok(Math.abs(ratio / want - 1) <= 0.12, `${fdi}: root ${(-bottom).toFixed(1)} over crown ${top.toFixed(1)} is ${ratio.toFixed(2)}, textbook ${want}`)
+  }
+})
+
+test('the cementoenamel junction curves further toward the biting edge on front teeth than on molars', () => {
+  // The junction's rise from its facial point to its highest proximal point, over the crown's half-width cheek to tongue.
+  const curvature = (fdi: number) => {
+    const cej = toothLandmarks(fdi).find((m) => m.name === 'Cementoenamel junction')!
+    const rise = Math.max(...cej.line!.map((p) => p[1])) - cej.anchor[1]
+    return rise / (toothSizes(fdi).bl / 2)
+  }
+  const incisors = [11, 12, 31, 32].map(curvature)
+  const molars = [16, 17, 18, 36, 37, 38].map(curvature)
+  assert.ok(Math.min(...incisors) > 2 * Math.max(...molars), `incisors ${incisors.map((c) => c.toFixed(2))}, molars ${molars.map((c) => c.toFixed(2))}`)
+  for (const c of incisors) assert.ok(c > 0.6, `an incisor's junction rises ${c.toFixed(2)} of its half-width`)
+  for (const c of molars) assert.ok(c < 0.3, `a molar's junction rises ${c.toFixed(2)} of its half-width`)
 })
 
 test('the arch is symmetric, with the patient’s right on the viewer’s left and the front teeth nearest', () => {

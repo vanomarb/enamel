@@ -147,19 +147,26 @@ function aboutMarkup(fdi: number): string {
   )
 }
 
-/** What changed: the arch on show, the chosen tooth (chosen again counts too), the keyboard's tab stop, or the numbering. */
-export type Change = 'arch' | 'select' | 'stop' | 'numbering'
+/** What changed: the arch on show, the chosen tooth (chosen again counts too), the keyboard's tab stop, the numbering, or
+    the mouth (closed or open, in the 3D view). */
+export type Change = 'arch' | 'select' | 'stop' | 'numbering' | 'jaw'
+
+/** The 3D model's mouth: teeth together, or the lower jaw turned a little open. */
+export type Jaw = 'closed' | 'open'
 
 /** What the 3D model needs from the explorer: it shows the explorer's state and hands picks back through select(). */
 export interface ExplorerHost {
   root: HTMLElement
   chart: HTMLElement
+  /** The arch the flat chart shows on phones; the 3D model always shows both. */
   arch(): Arch
   selected(): number | null
   /** The numbering the visitor chose: label teeth with formatTooth(fdi, host.numbering()) from lib/notation.ts. */
   numbering(): NumberingSystem
+  /** The mouth the visitor chose with Closed and Open. */
+  jaw(): Jaw
   select(fdi: number): void
-  /** Calls back after each change of arch, chosen tooth, tab stop or numbering, saying which. Returns a function that stops it. */
+  /** Calls back after each change of arch, chosen tooth, tab stop, numbering or mouth, saying which. Returns a function that stops it. */
   onChange(listener: (change: Change) => void): () => void
 }
 
@@ -203,10 +210,9 @@ function whenNear(el: Element, run: () => void): void {
 }
 
 /** The flat chart is the page's own; the 3D model replaces it on screen only once it has drawn, and the flat one stays for keyboards and screen readers. */
-function offerModel(host: ExplorerHost, load: ModelLoader, beforeLoad: () => void): void {
+function offerModel(host: ExplorerHost, load: ModelLoader): void {
   const { root } = host
   whenNear(root, () => {
-    beforeLoad()
     let view: ModelView | null = null
     const watcher = new MutationObserver(() => {
       if (!root.isConnected) flat()
@@ -238,6 +244,8 @@ export function initToothExplorer(root: HTMLElement, load: ModelLoader = loadMod
   if (!chart || !panel || !status) return
   let selected: number | null = null
   let numbering = storedNumbering()
+  // Not kept: every visit starts with the teeth together.
+  let jaw: Jaw = 'closed'
   const listeners = new Set<(change: Change) => void>()
   const changed = (change: Change) => {
     for (const listener of listeners) listener(change)
@@ -363,6 +371,14 @@ export function initToothExplorer(root: HTMLElement, load: ModelLoader = loadMod
     if (option?.dataset.arch === 'upper' || option?.dataset.arch === 'lower') setArch(option.dataset.arch)
   })
 
+  root.querySelector('[data-jaw-toggle]')?.addEventListener('click', (event) => {
+    const option = (event.target as Element).closest<HTMLButtonElement>('button[data-jaw]')?.dataset.jaw
+    if ((option !== 'closed' && option !== 'open') || option === jaw) return
+    jaw = option
+    for (const b of root.querySelectorAll<HTMLButtonElement>('[data-jaw-toggle] button')) b.setAttribute('aria-pressed', String(b.dataset.jaw === jaw))
+    changed('jaw')
+  })
+
   root.querySelector('[data-numbering]')?.addEventListener('click', (event) => {
     const option = (event.target as Element).closest<HTMLButtonElement>('button[data-system]')
     if (isNumberingSystem(option?.dataset.system)) setNumbering(option.dataset.system)
@@ -384,14 +400,12 @@ export function initToothExplorer(root: HTMLElement, load: ModelLoader = loadMod
     arch: () => (root.dataset.arch === 'lower' ? 'lower' : 'upper'),
     selected: () => selected,
     numbering: () => numbering,
+    jaw: () => jaw,
     select,
     onChange(listener) {
       listeners.add(listener)
       return () => listeners.delete(listener)
     },
   }
-  // The 3D model opens on the lower teeth, seen from the front like a smile, unless a tooth is already chosen.
-  offerModel(host, load, () => {
-    if (selected === null && webglWorks()) setArch('lower')
-  })
+  offerModel(host, load)
 }

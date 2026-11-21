@@ -2,7 +2,7 @@ import { after, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { closeAll, loadPage, type Page } from '../../../tests/harness.ts'
 import { toothName } from '../../lib/teeth.ts'
-import { initToothExplorer, type ExplorerHost, type ModelLoader } from './tooth-explorer.ts'
+import { initToothExplorer, type Change, type ExplorerHost, type ModelLoader } from './tooth-explorer.ts'
 import { mountOverlay } from './tooth-overlay.ts'
 
 /* jsdom has no WebGL, so these check the 3D model's loading and its contract with the explorer, not its drawing. */
@@ -79,7 +79,7 @@ test('a 3D view that starts takes over the screen, shows the explorer’s change
   assert.match(p.text('[data-explorer-status]'), new RegExp(`^${toothName(16)}\\.`))
   assert.ok(changes > 0, 'the view heard about it')
 
-  // A tooth on the other arch turns the view, and the Upper and Lower buttons turn it back.
+  // Choosing a tooth still sets the arch the flat chart shows on phones; the model itself shows both arches.
   view.select(46)
   assert.equal(view.arch(), 'lower')
   assert.equal(p.$('[data-arch-toggle] [data-arch="lower"]').getAttribute('aria-pressed'), 'true')
@@ -96,6 +96,61 @@ test('a 3D view that starts takes over the screen, shows the explorer’s change
   root.remove()
   await p.wait(0)
   assert.equal(disposed, 1, 'the view is let go when the explorer leaves the page')
+})
+
+test('in the 3D view Closed and Open replace Upper and Lower; the view reads the mouth and hears each change', async () => {
+  const p = loadPage('treatments/index.html', 'treatments/')
+  scrolledTo(p)
+  let host: ExplorerHost | null = null
+  const heard: Change[] = []
+  p.run(() =>
+    initToothExplorer(explorerOn(p), async (h) => {
+      host = h
+      h.onChange((change) => heard.push(change))
+      return { dispose() {} }
+    }),
+  )
+  await p.wait(20)
+  const view = host as unknown as ExplorerHost
+  assert.equal(explorerOn(p).dataset.arch, 'upper', 'the model no longer turns the flat chart to the lower teeth on load')
+
+  // A labelled group of two buttons, styled like the other switches, hidden without JavaScript.
+  const group = p.$('[data-jaw-toggle]')
+  assert.equal(group.getAttribute('role'), 'group')
+  assert.equal(group.getAttribute('aria-label'), 'Mouth')
+  assert.ok(group.closest('[data-js-only]'))
+  const buttons = p.$$<HTMLButtonElement>('[data-jaw-toggle] button')
+  assert.deepEqual(buttons.map((b) => b.textContent), ['Closed', 'Open'])
+  assert.ok(buttons.every((b) => b.type === 'button' && b.className === p.$('[data-numbering] button').className))
+  // It shows only with the model; Upper and Lower hide then, and stay for the flat chart on phones.
+  const classes = (el: Element) => el.className.split(/\s+/)
+  assert.ok(classes(group).includes('hidden') && classes(group).includes('group-data-[view=3d]/explorer:inline-flex'))
+  const archToggle = p.$('[data-arch-toggle]')
+  assert.ok(classes(archToggle).includes('max-sm:inline-flex') && classes(archToggle).includes('group-data-[view=3d]/explorer:hidden'))
+
+  // Closed to begin with; Open and Closed tell the view, once per change, and leave the arch alone.
+  assert.equal(view.jaw(), 'closed')
+  assert.deepEqual(buttons.map((b) => b.getAttribute('aria-pressed')), ['true', 'false'])
+  p.click(buttons[1])
+  assert.equal(view.jaw(), 'open')
+  assert.deepEqual(buttons.map((b) => b.getAttribute('aria-pressed')), ['false', 'true'])
+  assert.deepEqual(heard, ['jaw'])
+  p.click(buttons[1])
+  assert.deepEqual(heard, ['jaw'], 'no news when nothing changed')
+  p.click(buttons[0])
+  assert.equal(view.jaw(), 'closed')
+  assert.deepEqual(heard, ['jaw', 'jaw'])
+  assert.equal(view.arch(), 'upper')
+
+  // Not kept: the next visit starts closed.
+  p.click(buttons[1])
+  assert.ok(!Object.keys(p.window.localStorage).some((key) => /jaw|mouth/i.test(key)))
+  const again = loadPage('treatments/index.html', 'treatments/')
+  scrolledTo(again)
+  let next: ExplorerHost | null = null
+  again.run(() => initToothExplorer(explorerOn(again), async (h) => ((next = h), { dispose() {} })))
+  await again.wait(20)
+  assert.equal((next as unknown as ExplorerHost).jaw(), 'closed')
 })
 
 test('if the 3D view can’t start, or loses its drawing context later, the flat chart comes back', async () => {
@@ -145,8 +200,14 @@ function fakeView(calls: string[]): ModelLoader {
       zoom: (factor) => void calls.push(`zoom ${factor.toFixed(2)}`),
       highlight: () => {},
     })
+    const stop = host.onChange((change) => void (change === 'jaw' && calls.push(`jaw ${host.jaw()}`)))
     overlay.place()
-    return { dispose: () => overlay.dispose() }
+    return {
+      dispose: () => {
+        stop()
+        overlay.dispose()
+      },
+    }
   }
 }
 
@@ -206,9 +267,17 @@ test('choosing a tooth opens the close-up; its tools work; Escape, an empty tap 
   assert.equal(p.text('[data-panel] [data-tooth-name]'), toothName(36), 'still chosen')
   assert.equal(p.document.activeElement, tooth(p, 36), 'focus goes back to the chart’s tooth')
 
-  // Choosing another tooth opens it straight away; Reset view leaves the close-up and returns to the rest view.
+  // Choosing another tooth opens it straight away, on either arch; Open and Closed leave the close-up as it is.
   ;(host as unknown as ExplorerHost).select(46)
   assert.deepEqual(calls.splice(0), ['focus 46 previous'])
+  ;(host as unknown as ExplorerHost).select(16)
+  assert.deepEqual(calls.splice(0), ['focus 16 previous', 'inside surface', 'landmarks false'], 'a tooth on the other arch opens without leaving first')
+  ;(host as unknown as ExplorerHost).select(46)
+  calls.splice(0)
+  p.click('[data-jaw-toggle] [data-jaw="open"]')
+  assert.deepEqual(calls.splice(0), ['jaw open'])
+  assert.ok(!inside.hidden, 'still in the close-up')
+  // Reset view leaves the close-up and returns to the rest view.
   p.click('[data-reset]')
   assert.deepEqual(calls.splice(0), ['focus null rest'])
   p.click('[data-zoom="in"]')

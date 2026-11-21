@@ -122,19 +122,47 @@ export function fitPoints(points: Vec3[], yaw: number, pitch: number, aspect: nu
   return { target, distance }
 }
 
-/**
- * The aim's offset from the subject's centre, cut back so that centre stays inside the frame: within share of the
- * half-width and half-height, for a camera this far from the aim. The part along the line of sight is kept (zooming
- * toward the pointer brings the aim nearer), short of putting the centre behind the camera.
- */
-export function clampPan(pan: Vec3, yaw: number, pitch: number, distance: number, aspect: number, share = 0.9): Vec3 {
+/** How far a subject reaches from its centre, in mm, along the camera's right, up and forward axes. */
+export interface Reach {
+  right: [number, number]
+  up: [number, number]
+  forward: [number, number]
+}
+
+export function reachOf(points: Vec3[], centre: Vec3, yaw: number, pitch: number): Reach {
   const { forward, right, up } = axes(yaw, pitch)
-  const f = Math.min(dot(pan, forward), distance * 0.75)
-  const depth = distance - f
-  const tan = Math.tan((FOV / 2) * DEG) * share
-  const x = clamp(dot(pan, right), -tan * aspect * depth, tan * aspect * depth)
-  const y = clamp(dot(pan, up), -tan * depth, tan * depth)
-  return [forward[0] * f + right[0] * x + up[0] * y, forward[1] * f + right[1] * x + up[1] * y, forward[2] * f + right[2] * x + up[2] * y]
+  const reach: Reach = { right: [0, 0], up: [0, 0], forward: [0, 0] }
+  for (const p of points) {
+    const o: Vec3 = [p[0] - centre[0], p[1] - centre[1], p[2] - centre[2]]
+    const x = dot(o, right)
+    const y = dot(o, up)
+    const z = dot(o, forward)
+    reach.right = [Math.min(reach.right[0], x), Math.max(reach.right[1], x)]
+    reach.up = [Math.min(reach.up[0], y), Math.max(reach.up[1], y)]
+    reach.forward = [Math.min(reach.forward[0], z), Math.max(reach.forward[1], z)]
+  }
+  return reach
+}
+
+/**
+ * The aim's offset from the subject's centre, for a camera distance from the aim, where fit frames the whole subject.
+ * Across the screen it stays within what the subject reaches less most of what the camera sees (keep of the half-width
+ * and half-height at the aim). Along the line of sight it may come toward the subject's front, or go toward its back,
+ * by the share of the way the camera has zoomed in from fit to MIN_DISTANCE. At the whole view both leave the aim on
+ * the centre, so zooming back out always lands on the same view; zoomed in, every tooth and root tip comes within
+ * reach, a zoom onto a front tooth stops short of it, and the view never wanders off the subject.
+ */
+export function clampPan(pan: Vec3, reach: Reach, yaw: number, pitch: number, distance: number, fit: number, aspect: number, keep = 0.85): Vec3 {
+  const { forward, right, up } = axes(yaw, pitch)
+  const halfH = Math.tan((FOV / 2) * DEG) * distance * keep
+  const inward = fit > MIN_DISTANCE ? clamp((fit - distance) / (fit - MIN_DISTANCE), 0, 1) : 0
+  // Across the screen the range opens over the first quarter of the zoom, so the whole view has none at all.
+  const open = Math.min(1, 4 * inward)
+  const across = (v: number, [low, high]: [number, number], half: number) => clamp(v, Math.min(0, low + half) * open, Math.max(0, high - half) * open)
+  const x = across(dot(pan, right), reach.right, halfH * aspect)
+  const y = across(dot(pan, up), reach.up, halfH)
+  const z = clamp(dot(pan, forward), reach.forward[0] * inward, reach.forward[1] * inward)
+  return [right[0] * x + up[0] * y + forward[0] * z, right[1] * x + up[1] * y + forward[1] * z, right[2] * x + up[2] * y + forward[2] * z]
 }
 
 /** The close-up's angles: facing the tooth's lip or cheek side, nearly level with it, on its arch's side; never past the

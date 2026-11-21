@@ -21,7 +21,7 @@ import {
 } from 'three'
 import type { Arch } from './arch.ts'
 import { archLayout, gumMesh, shapeKey, toothLandmarks, toothLayers, toothShell, toothSizes, type MeshData, type PlacedTooth, type Vec3 } from './anatomy-model.ts'
-import { FOV, JAW_HINGE, cameraPosition, clampDistance, clampPan, clampPitch, clampYaw, crossesBall, decay, easeInOut, easeOut, facing, fitPoints, focusAngles, jawPoint, lerpView, openAngle, restAngles, wrapYaw, type View } from './tooth-camera.ts'
+import { FOV, JAW_HINGE, axes, cameraPosition, clampDistance, clampPan, clampPitch, clampYaw, reachOf, crossesBall, decay, easeInOut, easeOut, facing, fitPoints, focusAngles, jawPoint, lerpView, openAngle, restAngles, wrapYaw, type Reach, type View } from './tooth-camera.ts'
 import { bodyMaterial, layerMaterial, readPalette, sharedUniforms, toothMaterial, type GridMaterial } from './tooth-materials.ts'
 import { mountOverlay, type InsideMode, type LandmarkSpot, type ScreenSpot } from './tooth-overlay.ts'
 import type { ExplorerHost, ModelView } from './tooth-explorer.ts'
@@ -118,7 +118,7 @@ export async function mountToothView(host: ExplorerHost, lost: () => void): Prom
   const stage = document.createElement('div')
   stage.className = 'relative aspect-[5/4] w-full select-none'
   stage.dataset.model = ''
-  stage.innerHTML = '<canvas class="block size-full cursor-grab touch-pan-y" aria-hidden="true"></canvas>'
+  stage.innerHTML = '<canvas class="block size-full cursor-grab touch-none" aria-hidden="true"></canvas>'
   const canvas = stage.querySelector('canvas')!
   let renderer: WebGLRenderer
   try {
@@ -193,6 +193,8 @@ export async function mountToothView(host: ExplorerHost, lost: () => void): Prom
     upper: new Mesh(gumGeometry.upper, bodyMaterial(palette, shared)),
     lower: new Mesh(gumGeometry.lower, bodyMaterial(palette, shared)),
   }
+  /** The gum's own opacity (tooth-materials.ts); it thins to a quarter of that around an open tooth. */
+  const gumOpacity = gums.upper.material.opacity
   for (const arch of ['upper', 'lower'] as const) {
     gums[arch].renderOrder = 2
     holder(arch).add(gums[arch])
@@ -244,6 +246,8 @@ export async function mountToothView(host: ExplorerHost, lost: () => void): Prom
   let fly: { from: View; start: number } | null = null
   let currentView: View = { target: [0, 0, 0], distance: 200, yaw, pitch }
   let fitDistance = 200
+  let fitTarget: Vec3 = [0, 0, 0]
+  let reach: Reach = { right: [0, 0], up: [0, 0], forward: [0, 0] }
   const dim = new Anim()
   /** Each arch fades out while a tooth of the other is open, so nothing stands in the way of it. */
   const away: Record<Arch, Anim> = { upper: new Anim(), lower: new Anim() }
@@ -251,11 +255,14 @@ export async function mountToothView(host: ExplorerHost, lost: () => void): Prom
   const subject = () => (open ? toothPoints(open) : mouthPoints())
   const liveView = (): View => {
     // The controls sit outside the canvas, so a small margin is enough.
-    const fit = fitPoints(subject(), yaw, pitch, aspect, open ? 0.1 : 0.04)
+    const points = subject()
+    const fit = fitPoints(points, yaw, pitch, aspect, open ? 0.1 : 0.04)
     fitDistance = fit.distance
-    // The aim may slide toward the pointer, but the subject's centre stays in the frame.
-    panGoal.fromArray(clampPan(panGoal.toArray(), yaw, pitch, fit.distance * zoomGoal, aspect))
-    pan.fromArray(clampPan(pan.toArray(), yaw, pitch, fit.distance * zoom, aspect))
+    fitTarget = fit.target
+    // The aim may move across the subject, as far as its edges allow at this zoom (none at the whole view).
+    reach = reachOf(points, fit.target, yaw, pitch)
+    panGoal.fromArray(clampPan(panGoal.toArray(), reach, yaw, pitch, fit.distance * zoomGoal, fit.distance, aspect))
+    pan.fromArray(clampPan(pan.toArray(), reach, yaw, pitch, fit.distance * zoom, fit.distance, aspect))
     return { target: [fit.target[0] + pan.x, fit.target[1] + pan.y, fit.target[2] + pan.z], distance: fit.distance * zoom, yaw, pitch }
   }
   const startFly = (now: number) => {
@@ -441,7 +448,7 @@ export async function mountToothView(host: ExplorerHost, lost: () => void): Prom
     zoom(factor) {
       // The buttons zoom about the middle of the canvas, the same way as the wheel.
       const box = canvas.getBoundingClientRect()
-      zoomBy(factor, { clientX: box.left + box.width / 2, clientY: box.top + box.height / 2 })
+      zoomBy(factor, { clientX: box.left + box.width / 2, clientY: box.top + box.height / 2 }, true)
     },
     highlight(fdi) {
       highlighted = fdi
@@ -539,7 +546,7 @@ export async function mountToothView(host: ExplorerHost, lost: () => void): Prom
     for (const arch of ['upper', 'lower'] as const) {
       const fade = away[arch].value
       gums[arch].visible = fade < 1
-      gums[arch].material.opacity = (0.4 - 0.3 * dim.value) * (1 - fade)
+      gums[arch].material.opacity = gumOpacity * (1 - 0.75 * dim.value) * (1 - fade)
     }
     renderer.render(scene, camera)
     refreshCrowns()
@@ -631,56 +638,74 @@ export async function mountToothView(host: ExplorerHost, lost: () => void): Prom
     }
     return best
   }
-  const zoomBy = (factor: number, event?: { clientX: number; clientY: number }) => {
-    const before = currentView.distance
-    const goal = clampDistance(fitDistance * zoomGoal * factor, fitDistance)
-    const point = event ? zoomPoint(event) : null
-    if (point) {
-      const shift = 1 - goal / before
-      panGoal.add(point.sub(new Vector3(...currentView.target)).multiplyScalar(shift))
-      panGoal.fromArray(clampPan(panGoal.toArray(), yaw, pitch, goal, aspect))
+  /* Zooming works from where the last zoom was heading, not from a view still easing toward it, so quick wheel turns and
+     pinches add up exactly and the point under the pointer stays under it. The wheel and fingers act at once; the
+     buttons ease. A pinch zooms about the spot it first landed on, found once, so it stays between the fingers. */
+  const zoomBy = (factor: number, at?: { clientX: number; clientY: number } | Vector3 | null, eased = false) => {
+    const before = fitDistance * zoomGoal
+    const goal = clampDistance(before * factor, fitDistance)
+    const point = at instanceof Vector3 ? at.clone() : at ? zoomPoint(at) : null
+    if (point && goal !== before) {
+      // The aim closes on the point by the same share as the distance, which slides the eye straight along its line to
+      // the point: the point stays where it is on screen, and the eye never passes it.
+      const aim = new Vector3(...fitTarget).add(panGoal)
+      panGoal.addScaledVector(point.sub(aim), 1 - goal / before)
     }
     zoomGoal = goal / fitDistance
-    if (zoomGoal >= 0.999) panGoal.set(0, 0, 0)
-    if (still()) {
+    panGoal.fromArray(clampPan(panGoal.toArray(), reach, yaw, pitch, goal, fitDistance, aspect))
+    if (!eased || still()) {
       zoom = zoomGoal
       pan.copy(panGoal)
     }
     invalidate()
   }
+  /** Moves the view across the screen by a drag of dx, dy CSS pixels: the model follows the pointer. */
+  const panBy = (dx: number, dy: number) => {
+    const { right, up } = axes(yaw, pitch)
+    const perPx = (2 * Math.tan((FOV / 2) * DEG) * fitDistance * zoomGoal) / Math.max(stage.clientHeight, 1)
+    panGoal.addScaledVector(new Vector3(...right), -dx * perPx).addScaledVector(new Vector3(...up), dy * perPx)
+    panGoal.fromArray(clampPan(panGoal.toArray(), reach, yaw, pitch, fitDistance * zoomGoal, fitDistance, aspect))
+    pan.copy(panGoal)
+    invalidate()
+  }
 
-  /* Dragging turns the model, within its limits; touch turns it sideways only and leaves vertical swipes to the page. Two
-     fingers pinch, and tilt as they move up or down together. In the close-up a sideways drag spins the open tooth about
-     its long axis instead, as far as you like. */
+  /* One finger or the mouse turns and tilts the model, within its limits. Two fingers pinch to zoom and move the view as
+     they slide together; with a mouse, a right-button or Shift drag moves it. In the close-up a sideways drag spins the
+     open tooth about its long axis instead, as far as you like. */
   const pointers = new Map<number, { x: number; y: number }>()
-  let drag: { id: number; x: number; y: number; moved: boolean; touch: boolean; t: number } | null = null
-  let pinch: { distance: number; zoom: number; y: number } | null = null
+  let drag: { id: number; x: number; y: number; moved: boolean; touch: boolean; move: boolean; t: number } | null = null
+  let pinch: { distance: number; zoom: number; x: number; y: number; anchor: Vector3 | null } | null = null
   let skipClick = false
 
   const onPointerDown = (event: PointerEvent) => {
-    if (event.pointerType === 'mouse' && event.button !== 0) return
+    if (event.pointerType === 'mouse' && event.button !== 0 && event.button !== 2) return
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
     if (pointers.size === 2) {
       const [a, b] = [...pointers.values()]
-      pinch = { distance: Math.hypot(a.x - b.x, a.y - b.y), zoom: zoomGoal, y: (a.y + b.y) / 2 }
+      const x = (a.x + b.x) / 2
+      const y = (a.y + b.y) / 2
+      pinch = { distance: Math.hypot(a.x - b.x, a.y - b.y), zoom: zoomGoal, x, y, anchor: zoomPoint({ clientX: x, clientY: y }) }
       drag = null
       spinYaw = spinPitch = 0
       return
     }
     skipClick = false
     spinYaw = spinPitch = 0
-    drag = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false, touch: event.pointerType !== 'mouse', t: performance.now() }
+    const touch = event.pointerType !== 'mouse'
+    drag = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false, touch, move: !touch && (event.button === 2 || event.shiftKey), t: performance.now() }
     if (!drag.touch) canvas.setPointerCapture(event.pointerId)
   }
   const onPointerMove = (event: PointerEvent) => {
     if (pointers.has(event.pointerId)) pointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
     if (pinch && pointers.size === 2) {
       const [a, b] = [...pointers.values()]
-      const middle = (a.y + b.y) / 2
-      pitch = clampPitch(pitch + (middle - pinch.y) * DRAG_SPEED, open !== null)
-      pinch.y = middle
+      const mx = (a.x + b.x) / 2
+      const my = (a.y + b.y) / 2
+      panBy(mx - pinch.x, my - pinch.y)
+      pinch.x = mx
+      pinch.y = my
       const factor = pinch.distance / Math.max(Math.hypot(a.x - b.x, a.y - b.y), 1)
-      zoomBy((pinch.zoom * factor) / zoomGoal, { clientX: (a.x + b.x) / 2, clientY: middle })
+      zoomBy((pinch.zoom * factor) / zoomGoal, pinch.anchor ?? { clientX: mx, clientY: my })
       skipClick = true
       return
     }
@@ -690,17 +715,20 @@ export async function mountToothView(host: ExplorerHost, lost: () => void): Prom
       const dx = event.clientX - drag.x
       const dy = event.clientY - drag.y
       if (!drag.moved) {
-        // A touch that sets off mostly vertical is the page scrolling, not a turn.
-        if (drag.touch && Math.abs(dy) > Math.abs(dx)) return
         if (Math.hypot(dx, dy) < 6) return
         drag.moved = true
         fly = null
         canvas.style.cursor = 'grabbing'
       }
       const now = performance.now()
+      if (drag.move) {
+        panBy(dx, dy)
+        Object.assign(drag, { x: event.clientX, y: event.clientY, t: now })
+        return
+      }
       const elapsed = Math.max(now - drag.t, 1)
       const turn = -dx * DRAG_SPEED
-      const tilt = drag.touch ? 0 : dy * DRAG_SPEED
+      const tilt = dy * DRAG_SPEED
       if (open) spinOpen(turn, now)
       else yaw = clampYaw(yaw + turn)
       pitch = clampPitch(pitch + tilt, open !== null)
@@ -749,6 +777,8 @@ export async function mountToothView(host: ExplorerHost, lost: () => void): Prom
   canvas.addEventListener('pointerleave', onPointerLeave)
   canvas.addEventListener('click', onClick)
   canvas.addEventListener('wheel', onWheel, { passive: false })
+  const onContextMenu = (event: Event) => event.preventDefault()
+  canvas.addEventListener('contextmenu', onContextMenu)
 
   const resize = new ResizeObserver(() => {
     const width = stage.clientWidth
@@ -783,6 +813,7 @@ export async function mountToothView(host: ExplorerHost, lost: () => void): Prom
     overlay.dispose()
     canvas.removeEventListener('webglcontextlost', onLost)
     canvas.removeEventListener('wheel', onWheel)
+    canvas.removeEventListener('contextmenu', onContextMenu)
     for (const g of [...shapes.values(), gumGeometry.upper, gumGeometry.lower]) g.dispose()
     for (const tooth of teeth.values()) {
       tooth.material.dispose()

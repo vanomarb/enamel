@@ -152,6 +152,26 @@ test('every shell and inside layer is closed and faces outward, within the trian
   assertClosed(gumMesh('lower'), 'lower gum')
 })
 
+test('the gum carries on across the inside of each arch: a vaulted roof over the upper, a filled floor in the lower', () => {
+  // On the midline, level with the first molars: the roof well above the upper gum line, and the floor close to the
+  // lower gum line, domed a little toward the bite.
+  const midline = (arch: 'upper' | 'lower', fdi: number) => {
+    const m = gumMesh(arch)
+    const z = toWorld(archLayout().find((p) => p.fdi === fdi)!.matrix, [0, 0, 0])[2]
+    const heights: number[] = []
+    for (let i = 0; i < m.positions.length / 3; i++) {
+      const [x, y, pz] = point(m, i)
+      if (Math.abs(x) < 2 && Math.abs(pz - z) < 3) heights.push(y)
+    }
+    return heights
+  }
+  const roof = midline('upper', 16)
+  assert.ok(roof.length > 0 && Math.max(...roof) > 14, `the roof reaches ${Math.max(0, ...roof).toFixed(1)} mm above the bite`)
+  const floor = midline('lower', 36)
+  const top = floor.length ? Math.max(...floor) : NaN
+  assert.ok(top > -8 && top < -1, `the floor tops out ${top.toFixed(1)} mm from the bite`)
+})
+
 test('the pulp sits inside the dentin, and the dentin inside the tooth', () => {
   for (const fdi of KINDS) {
     const shell = toothShell(fdi)

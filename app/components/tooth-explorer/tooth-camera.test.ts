@@ -15,6 +15,7 @@ import {
   cameraPosition,
   clampDistance,
   clampPan,
+  reachOf,
   clampPitch,
   clampYaw,
   decay,
@@ -81,28 +82,40 @@ test('zoom stays between one molar’s cusps and a little past the whole mouth',
   assert.deepEqual(closer.target, [5, 0, 0])
 })
 
-test('the aim may slide toward the pointer, but never so far that the subject’s centre leaves the frame', () => {
+test('panning reaches every part of the subject once zoomed in, never past its edge, and stays centred on the whole view', () => {
   const tan = Math.tan((FOV / 2) * DEG)
-  for (const [yaw, pitch, distance, aspect] of [[0, 10 * DEG, 20, 1.25], [1.2, -0.4, 60, 1.25], [-1.3, 0.7, 16, 0.8]]) {
+  const aspect = 1.25
+  for (const [yaw, pitch] of [[0, 10 * DEG], [0.9, -0.3], [-1.2, 0.6]]) {
     const { forward, right, up } = axes(yaw, pitch)
-    // A wild pan: far off to the side, up, and toward the camera.
-    const wild: Vec3 = [0, 1, 2].map((k) => right[k] * 300 + up[k] * -200 + forward[k] * -10) as Vec3
-    const pan = clampPan(wild, yaw, pitch, distance, aspect)
-    // The centre sits at aim - pan; seen from the eye it must project inside the frame.
-    const target: Vec3 = [5, -2, 8]
-    const centre: Vec3 = [target[0] - pan[0], target[1] - pan[1], target[2] - pan[2]]
-    const eye = cameraPosition({ target, distance, yaw, pitch })
-    const o: Vec3 = [centre[0] - eye[0], centre[1] - eye[1], centre[2] - eye[2]]
-    const z = o[0] * forward[0] + o[1] * forward[1] + o[2] * forward[2]
-    const x = (o[0] * right[0] + o[1] * right[1] + o[2] * right[2]) / z
-    const y = (o[0] * up[0] + o[1] * up[1] + o[2] * up[2]) / z
-    assert.ok(z > 0 && Math.abs(x) <= tan * aspect + 1e-9 && Math.abs(y) <= tan + 1e-9, `centre in frame at yaw ${yaw}`)
-    // The part along the line of sight is kept.
-    assert.ok(near(pan[0] * forward[0] + pan[1] * forward[1] + pan[2] * forward[2], -10, 1e-9))
+    const along = (v: Vec3, axis: Vec3) => v[0] * axis[0] + v[1] * axis[1] + v[2] * axis[2]
+    const offset = (x: number, y: number, z = 0): Vec3 => [0, 1, 2].map((k) => right[k] * x + up[k] * y + forward[k] * z) as Vec3
+    // A subject reaching 30 mm either side of its centre and 25 mm up and down, as the camera sees it.
+    const centre: Vec3 = [4, -3, 6]
+    const points: Vec3[] = [offset(-30, 0), offset(30, 0), offset(0, -25), offset(0, 25), offset(10, 10, 20)].map((o) => [o[0] + centre[0], o[1] + centre[1], o[2] + centre[2]])
+    const reach = reachOf(points, centre, yaw, pitch)
+    assert.ok(near(reach.right[0], -30, 1e-9) && near(reach.right[1], 30, 1e-9) && near(reach.up[0], -25, 1e-9) && near(reach.up[1], 25, 1e-9))
+    assert.ok(near(reach.forward[0], 0, 1e-9) && near(reach.forward[1], 20, 1e-9))
+    // At the whole view the subject fills the frame, so the aim is its centre exactly, in depth too: zooming back out
+    // always lands on the same view.
+    const whole = 30 / (tan * aspect)
+    const centred = clampPan(offset(20, 20, 12), reach, yaw, pitch, whole, whole, aspect)
+    assert.ok(centred.every((v) => near(v, 0, 1e-9)), `centred at yaw ${yaw}: ${centred}`)
+    // Half-way in, the aim may come only part of the way toward the subject's front.
+    const halfway = clampPan(offset(0, 0, 20), reach, yaw, pitch, (whole + MIN_DISTANCE) / 2, whole, aspect)
+    assert.ok(near(along(halfway, forward), 10, 1e-6), `half the depth half-way in at yaw ${yaw}`)
+    // Zoomed right in, a molar 22 mm to the side and a root tip 20 mm up are both within reach.
+    const molar = clampPan(offset(22, 20), reach, yaw, pitch, MIN_DISTANCE, whole, aspect)
+    assert.ok(near(along(molar, right), 22, 1e-9) && near(along(molar, up), 20, 1e-9), `molar reachable at yaw ${yaw}`)
+    // A wild pan stops where the subject's edge meets the frame's; along the line of sight the aim stays within the
+    // subject's depth (here from its centre to 20 mm deeper).
+    const wild = clampPan(offset(300, -200, -10), reach, yaw, pitch, MIN_DISTANCE, whole, aspect)
+    const x = along(wild, right)
+    const y = along(wild, up)
+    assert.ok(x < 30 - 0.5 * tan * aspect * MIN_DISTANCE && x > 20, `x ${x} stops short of the edge`)
+    assert.ok(y > -25 + 0.5 * tan * MIN_DISTANCE && y < -15, `y ${y} stops short of the edge`)
+    assert.ok(near(along(wild, forward), 0, 1e-9))
+    assert.ok(near(along(clampPan(offset(0, 0, 12), reach, yaw, pitch, MIN_DISTANCE, whole, aspect), forward), 12, 1e-9))
   }
-  // A small pan is left alone.
-  const small: Vec3 = [1, 0.5, -0.5]
-  assert.deepEqual(clampPan(small, 0, 0, 100, 1.25).map((v) => Math.round(v * 1e9) / 1e9), small)
 })
 
 test('a fitted view keeps every point inside the frame', () => {

@@ -1,11 +1,12 @@
 import { ROWS, type Arch } from '../arch.ts'
-import { add, bell, lerp, length, resample, scale, smooth, spline2, sub, type Vec3 } from './maths.ts'
-import { finish, newPart, type MeshData, type Part } from './mesh.ts'
+import { add, bell, cross, lerp, length, resample, scale, smooth, spline2, sub, type Vec3 } from './maths.ts'
+import { CELL, finish, newPart, type MeshData, type Part } from './mesh.ts'
 import { specOf } from './specs.ts'
 import { shapeOf, shellOf, toothShell } from './tooth.ts'
 import { archLayout, toWorld } from './layout.ts'
 
-/* The gum and jaw bone around each arch's roots: one translucent body, scalloped at the gum line. */
+/* The gum and jaw bone around each arch's roots: one translucent body, scalloped at the gum line. Inside the arch it
+   carries on as the roof of the mouth over the upper teeth, and as a filled, gently domed floor inside the lower. */
 
 const gums = new Map<Arch, MeshData>()
 
@@ -103,6 +104,8 @@ export function gumMesh(arch: Arch): MeshData {
   const sections: Vec3[][] = []
   const depths: number[][] = []
   const vAround: number[][] = []
+  // Where the roof of the mouth (upper) or the floor (lower) carries on from the gum's tongue side, station by station.
+  const inner: Vec3[] = []
   for (let k = 0; k < stationCount; k++) {
     const [px, pz] = stations[k]
     const [qx, qz] = stations[Math.min(k + 1, stationCount - 1)]
@@ -146,6 +149,11 @@ export function gumMesh(arch: Arch): MeshData {
     const closed = control.map(([w, h]) => [mid + (w - mid) * (0.25 + 0.75 * endFade), cy + (h - cy) * (0.35 + 0.65 * endFade)] as [number, number])
     const section = spline2(closed, true, PER)
     sections.push(section.map(([w, h]) => [px + w * nx, up * h, pz + w * nz]))
+    // On the tongue-side wall just past the gum line, so the inside reads as the same gum carried on across.
+    const [iw, ih] = arch === 'upper' ? [l + 0.4, gL - 1.2] : [l + 0.4, gL - 0.8]
+    const fw = mid + (iw - mid) * (0.25 + 0.75 * endFade)
+    const fh = cy + (ih - cy) * (0.35 + 0.65 * endFade)
+    inner.push([px + fw * nx, up * fh, pz + fw * nz])
     depths.push(section.map(([, h]) => Math.max(0, Math.max(gF, gL) - h)))
     // Around the section, measured both ways from the underside, so the grid's long lines run evenly along the walls.
     const around = [0]
@@ -192,7 +200,105 @@ export function gumMesh(arch: Arch): MeshData {
     }
   }
   parts.push(body)
+  parts.push(innerPlate(inner, up, arch === 'upper' ? { depth: 0.38, most: 13, thick: 3, rise: false } : { depth: 0.1, most: 3, thick: 12, rise: true }))
   const mesh = finish(parts)
   gums.set(arch, mesh)
   return mesh
 }
+
+/**
+ * The inside of the arch: a body from each station's tongue-side point to its partner across the mouth, from behind the
+ * last molars to behind the front teeth. Its mouth side vaults away from the bite (the roof) or domes gently toward it
+ * (the floor) by a share of the width (depth, at most most mm); it is thick mm through at the middle. The two faces meet
+ * along the gum and are closed at both ends.
+ */
+function innerPlate(inner: Vec3[], up: number, vault: { depth: number; most: number; thick: number; rise: boolean }): Part {
+  const plate = newPart()
+  const last = inner.length - 1
+  const rows = Math.floor(inner.length / 2)
+  const ACROSS = 18
+  const away: Vec3 = [0, -up, 0]
+  const oral: Vec3[][] = []
+  const nasal: Vec3[][] = []
+  const across: number[][] = []
+  const middles: Vec3[] = []
+  for (let r = 0; r < rows; r++) {
+    const a = inner[r]
+    const b = inner[last - r]
+    const width = length(sub(b, a))
+    const sink = Math.min(vault.most, vault.depth * width) * (vault.rise ? -1 : 1)
+    const thick = Math.min(vault.thick, 0.15 * width)
+    const row: Vec3[] = []
+    const back: Vec3[] = []
+    for (let i = 0; i <= ACROSS; i++) {
+      const v = i / ACROSS
+      const bulge = Math.sin(Math.PI * v)
+      const p = add(lerp3(a, b, v), scale(away, sink * bulge ** (vault.rise ? 0.5 : 0.85)))
+      row.push(p)
+      back.push(add(p, scale(away, thick * bulge)))
+    }
+    oral.push(row)
+    nasal.push(back)
+    const s = [0]
+    for (let i = 1; i <= ACROSS; i++) s.push(s[i - 1] + length(sub(row[i], row[i - 1])))
+    across.push(s.map((x) => x - s[ACROSS] / 2))
+    middles.push(row[ACROSS / 2])
+  }
+  // Along the plate from the front teeth backward, in mm.
+  const along = new Array(rows).fill(0)
+  for (let r = rows - 2; r >= 0; r--) along[r] = along[r + 1] + length(sub(middles[r], middles[r + 1]))
+  const index = (sheet: 'oral' | 'nasal', r: number, i: number) => (sheet === 'nasal' && i > 0 && i < ACROSS ? rows * (ACROSS + 1) + r * (ACROSS - 1) + i - 1 : r * (ACROSS + 1) + i)
+  for (let r = 0; r < rows; r++) for (let i = 0; i <= ACROSS; i++) {
+    plate.positions.push(...oral[r][i])
+    plate.grid.push(along[r], across[r][i], 1.5)
+  }
+  // The far face, seen only through the mouth side, carries no grid (its coordinates sit between lines), so the
+  // inside never shows two grids crossing.
+  for (let r = 0; r < rows; r++) for (let i = 1; i < ACROSS; i++) {
+    plate.positions.push(...nasal[r][i])
+    plate.grid.push(CELL / 2, CELL / 2, 6)
+  }
+  const at = (n: number): Vec3 => [plate.positions[3 * n], plate.positions[3 * n + 1], plate.positions[3 * n + 2]]
+  const emitted = new Set<string>()
+  const emit = (tris: [number, number, number][], flip: boolean) => {
+    for (const [x, y, z] of tris) {
+      if (x === y || y === z || x === z) continue
+      const tri = flip ? [x, z, y] : [x, y, z]
+      plate.indices.push(...tri)
+      for (let e = 0; e < 3; e++) emitted.add(`${tri[e]}>${tri[(e + 1) % 3]}`)
+    }
+  }
+  const sheetTris = (sheet: 'oral' | 'nasal') => {
+    const tris: [number, number, number][] = []
+    for (let r = 0; r < rows - 1; r++) for (let i = 0; i < ACROSS; i++) {
+      const p = index(sheet, r, i)
+      const q = index(sheet, r, i + 1)
+      const s = index(sheet, r + 1, i)
+      const u = index(sheet, r + 1, i + 1)
+      tris.push([p, q, s], [q, u, s])
+    }
+    return tris
+  }
+  // The mouth side faces the bite; which way that winds is read off a triangle in the middle of the plate. The other face
+  // and the closing strips wind against what is already there, so every edge is shared both ways.
+  const oralTris = sheetTris('oral')
+  const [a, b, c] = oralTris[(Math.floor(rows / 2) * ACROSS + ACROSS / 2) * 2]
+  const oralFlip = dot(cross(sub(at(b), at(a)), sub(at(c), at(a))), away) > 0
+  emit(oralTris, oralFlip)
+  emit(sheetTris('nasal'), !oralFlip)
+  for (const r of [0, rows - 1]) {
+    const tris: [number, number, number][] = []
+    for (let i = 0; i < ACROSS; i++) {
+      const o0 = index('oral', r, i)
+      const o1 = index('oral', r, i + 1)
+      const n0 = index('nasal', r, i)
+      const n1 = index('nasal', r, i + 1)
+      tris.push([o0, o1, n0], [o1, n1, n0])
+    }
+    emit(tris, emitted.has(`${index('oral', r, ACROSS / 2)}>${index('oral', r, ACROSS / 2 + 1)}`))
+  }
+  return plate
+}
+
+const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+const lerp3 = (a: Vec3, b: Vec3, t: number): Vec3 => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]

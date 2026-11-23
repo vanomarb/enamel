@@ -7,7 +7,7 @@ clinic could put its prices, its HMO paperwork and its booking on a few calm pag
 ![The 3D tooth chart on a desktop: the lower left first molar lifted out of the gum to show its roots, beside its usual treatments and starting prices.](docs/screenshots/desktop.png)
 
 <p>
-  <img src="docs/screenshots/phone-teeth.png" width="150" alt="The 3D tooth chart on a phone: the lower teeth seen from the front, with their roots showing through the gum.">
+  <img src="docs/screenshots/phone-teeth.png" width="150" alt="The 3D tooth chart on a phone with the mouth open: the numbered upper and lower teeth in a pink gum, the lower arch curving back to the molars.">
   <img src="docs/screenshots/phone-booking.png" width="150" alt="A booking confirmed on a phone, with the six-month reminder preview.">
 </p>
 
@@ -30,14 +30,16 @@ clinic could put its prices, its HMO paperwork and its booking on a few calm pag
 
 - Read the price list: 16 treatments in six groups, each with a starting price, how long it takes, how many visits,
   what's included and how HMO plans usually treat it. Filter by group and open any row.
-- Pick a tooth on a 3D model of all 32 adult teeth, seen from the front with the roots showing through the gum. Drag to
-  turn it all the way round and pinch, Ctrl or ⌘ and scroll, or use the buttons to zoom. Tap or click a tooth to see
-  its usual treatments with their prices, and a close-up: the tooth lifts out of its socket and you can look inside at
-  the dentin, the pulp and each canal, or name its cusps, grooves, ridges and root tips. Short notes say how many roots
-  and canals it usually has and when it comes in. Numbers show in FDI, Universal or Palmer. The model faces you the
-  way a dentist sees it, so your right side is on the left, and it loads only when you scroll near it. It works with
-  a mouse, a finger or the keyboard; where 3D can't run (or without JavaScript), the flat chart of the same teeth takes
-  its place, and on a phone there's a plain list of teeth as an alternative.
+- Pick a tooth on a 3D model of all 32 adult teeth: both arches biting, seen from the front, with the roots showing
+  faintly through a pink gum. Closed and Open part the jaws to show the inside of the mouth, with the roof over the
+  upper teeth and the floor inside the lower ones. Drag to turn it (up to 80° each way, so it never ends up back to
+  front); pinch, Ctrl or ⌘ and scroll, or use the buttons to zoom; slide two fingers or Shift and drag to move it. Tap
+  or click a tooth to see its usual treatments with their prices, and a close-up: the tooth lifts out of its socket and
+  you can look inside at the dentin, the pulp and each canal, or name its cusps, grooves, ridges and root tips. Short
+  notes say how many roots and canals it usually has and when it comes in. Numbers show in FDI, Universal or Palmer.
+  The model faces you the way a dentist sees it, so your right side is on the left, and it loads only when you scroll
+  near it. It works with a mouse, a finger or the keyboard; where 3D can't run (or without JavaScript), the flat chart
+  of the same teeth takes its place, and on a phone there's a plain list of teeth as an alternative.
 - Press "Book this" on any treatment to open the booking with it already chosen (`/enamel/book/?service=filling`).
 - Book in four steps (five for braces): treatment, day, time, then the patient's name and an optional HMO. General
   treatments are booked with "any general dentist": a time is free when either chair is, and confirming gives it to the
